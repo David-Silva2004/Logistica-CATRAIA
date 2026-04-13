@@ -5,6 +5,8 @@
   "type": "module",
   "scripts": {
     "build": "vite build",
+    "db:apply-schema": "node server/scripts/apply-schema.js",
+    "start": "node server/index.js",
     "dev": "vite",
     "dev:client": "vite",
     "dev:server": "node server/index.js"

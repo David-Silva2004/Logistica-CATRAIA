@@ -1,14 +1,67 @@
 import http from "node:http";
+import fs from "node:fs/promises";
+import path from "node:path";
 import { URL } from "node:url";
 import { postgresPool } from "./database/postgres.js";
 
 const PORT = Number(process.env.PORT || 3001);
+const projectRoot = process.cwd();
+const distRoot = path.join(projectRoot, "dist");
+
+const contentTypes = {
+  ".css": "text/css; charset=utf-8",
+  ".html": "text/html; charset=utf-8",
+  ".js": "text/javascript; charset=utf-8",
+  ".json": "application/json; charset=utf-8",
+  ".svg": "image/svg+xml",
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".ico": "image/x-icon",
+};
 
 function sendJson(response, statusCode, payload) {
   response.writeHead(statusCode, {
     "Content-Type": "application/json; charset=utf-8",
   });
   response.end(JSON.stringify(payload));
+}
+
+async function sendFile(response, filePath) {
+  const extension = path.extname(filePath).toLowerCase();
+  const contentType = contentTypes[extension] || "application/octet-stream";
+  const fileContents = await fs.readFile(filePath);
+
+  response.writeHead(200, {
+    "Content-Type": contentType,
+  });
+  response.end(fileContents);
+}
+
+async function tryServeStatic(requestUrl, response) {
+  const pathname = requestUrl.pathname === "/" ? "/index.html" : requestUrl.pathname;
+  const normalizedPath = path.normalize(path.join(distRoot, pathname));
+
+  if (!normalizedPath.startsWith(distRoot)) {
+    sendJson(response, 403, { error: "Forbidden." });
+    return true;
+  }
+
+  try {
+    const fileStat = await fs.stat(normalizedPath);
+
+    if (fileStat.isFile()) {
+      await sendFile(response, normalizedPath);
+      return true;
+    }
+  } catch {
+    if (!requestUrl.pathname.startsWith("/api")) {
+      await sendFile(response, path.join(distRoot, "index.html"));
+      return true;
+    }
+  }
+
+  return false;
 }
 
 async function readJsonBody(request) {
@@ -353,6 +406,12 @@ const server = http.createServer(async (request, response) => {
       }
 
       sendJson(response, 200, { id: updatedId });
+      return;
+    }
+
+    const handledStatic = await tryServeStatic(requestUrl, response);
+
+    if (handledStatic) {
       return;
     }
 

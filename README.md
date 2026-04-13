@@ -1,9 +1,6 @@
-
 ## Logistica CATRAIA
 
-Painel web para operacao logistica, com foco em controle de tripulantes, visao resumida de indicadores e base pronta para evolucao futura com persistencia em PostgreSQL.
-
-O projeto atual roda como frontend em `Vite + React` e hoje utiliza dados simulados para alimentar a interface.
+Painel web para controle de operacoes, com frontend em `Vite + React`, backend em `Node.js` e persistencia em `PostgreSQL`.
 
 ## Tecnologias
 
@@ -11,14 +8,15 @@ O projeto atual roda como frontend em `Vite + React` e hoje utiliza dados simula
 - React
 - TypeScript/TSX
 - Tailwind CSS
-- Componentes Radix UI
+- Node.js
+- PostgreSQL
 
-## Como rodar o projeto
+## Rodando localmente
 
 ### Requisitos
 
-- Node.js LTS instalado
-- npm disponivel no terminal
+- Node.js LTS
+- PostgreSQL
 
 ### Instalar dependencias
 
@@ -26,19 +24,75 @@ O projeto atual roda como frontend em `Vite + React` e hoje utiliza dados simula
 npm install
 ```
 
-### Rodar em desenvolvimento
+### Configurar ambiente
+
+Use o arquivo [.env.example](.env.example) como base:
 
 ```bash
-npm run dev
+PGHOST=localhost
+PGPORT=5432
+PGDATABASE=example_catraia
+PGUSER=example_catraia_user
+PGPASSWORD=sua_senha
+PGSSL=false
 ```
 
-O Vite vai exibir a URL local no terminal, normalmente `http://localhost:5173/`.
+### Aplicar o schema
 
-### Gerar build de producao
+Depois de configurar as variaveis do banco:
+
+```bash
+npm run db:apply-schema
+```
+
+### Rodar frontend
+
+```bash
+npm run dev:client
+```
+
+### Rodar backend
+
+```bash
+npm run dev:server
+```
+
+Frontend local: `http://localhost:5173`
+
+API local: `http://localhost:3001/api/health`
+
+## Build de producao
 
 ```bash
 npm run build
 ```
+
+## Deploy no Render
+
+O projeto ja esta preparado para subir como **um unico Web Service**:
+
+- build: `npm install && npm run build`
+- start: `npm start`
+
+O backend serve a API e tambem os arquivos do `dist`, entao nao precisa criar um Static Site separado.
+
+### Variaveis de ambiente no Render
+
+Configure estas variaveis no servico:
+
+- `PGHOST`
+- `PGPORT`
+- `PGDATABASE`
+- `PGUSER`
+- `PGPASSWORD`
+- `PGSSL=true`
+
+Se quiser usar configuracao por arquivo, o projeto tambem inclui [render.yaml](render.yaml).
+
+Observacao:
+
+- Se o hostname do banco terminar com algo como `-a`, ele costuma ser o hostname interno da Render e funciona para o app publicado dentro da propria Render.
+- Esse tipo de hostname normalmente nao resolve no seu computador local.
 
 ## Estrutura principal
 
@@ -50,46 +104,5 @@ src/
 server/
   database/
     postgres.js
+  index.js
 ```
-
-## Conexao com PostgreSQL
-
-Foi adicionado o arquivo [server/database/postgres.js](server/database/postgres.js) como base para a conexao com o banco.
-
-Importante:
-
-- Esse arquivo deve ser usado apenas no backend.
-- Nao coloque credenciais de banco dentro do frontend.
-- Antes de usar a conexao em uma API/servidor Node, instale o driver do PostgreSQL:
-
-```bash
-npm install pg
-```
-
-Depois disso, preencha no arquivo:
-
-- `host`
-- `port`
-- `database`
-- `user`
-- `password`
-- `ssl`
-
-O modulo ja deixa pronto:
-
-- `postgresPool` para reaproveitar conexoes
-- `testPostgresConnection()` para validar acesso ao banco
-- `closePostgresConnection()` para encerrar o pool
-
-## Estado atual do projeto
-
-- Interface principal funcionando localmente
-- Dados ainda em modo mock
-- Sem backend integrado neste repositorio por enquanto
-
-## Proximos passos sugeridos
-
-1. Criar uma camada de API/backend para usar o arquivo de conexao com seguranca.
-2. Substituir os dados mockados por consultas reais ao PostgreSQL.
-3. Mover credenciais para variaveis de ambiente quando a integracao do backend for feita.
-  

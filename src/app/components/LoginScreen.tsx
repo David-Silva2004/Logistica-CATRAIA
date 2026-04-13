@@ -37,39 +37,39 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
           </div>
 
           <h1 className="mt-6 max-w-xl text-4xl font-black tracking-tight text-slate-900 md:text-5xl">
-            Painel operacional com a cara da empresa.
+            Gestao operacional com clareza e praticidade.
           </h1>
 
           <p className="mt-5 max-w-2xl text-lg leading-8 text-slate-600">
-            A tela de login ja ficou pronta para a proxima etapa. Por enquanto,
-            o acesso funciona em modo provisório, sem autenticação real, para
-            voce conseguir entrar e validar o layout e o fluxo.
+            Um painel pensado para organizar as operacoes do dia, facilitar o
+            acompanhamento da equipe e centralizar as informacoes mais
+            importantes da rotina.
           </p>
 
           <div className="mt-8 grid gap-4 md:grid-cols-2">
             <div className="rounded-2xl border border-black/5 bg-slate-50/70 p-5">
               <p className="text-xs font-bold uppercase tracking-[0.2em] text-amber-700">
-                Visual
+                Operacao
               </p>
               <p className="mt-2 text-base font-semibold text-slate-900">
-                Identidade em amarelo ouro
+                Registro simples do dia
               </p>
               <p className="mt-2 text-sm text-slate-600">
-                Ajustado para um amarelo mais quente, puxando para o ovo e o
-                dourado da marca.
+                Fluxo objetivo para registrar, consultar e acompanhar as
+                operacoes com mais agilidade.
               </p>
             </div>
 
             <div className="rounded-2xl border border-black/5 bg-slate-50/70 p-5">
               <p className="text-xs font-bold uppercase tracking-[0.2em] text-amber-700">
-                Proximo passo
+                Gestao
               </p>
               <p className="mt-2 text-base font-semibold text-slate-900">
-                Cadastro real de usuarios
+                Informacao centralizada
               </p>
               <p className="mt-2 text-sm text-slate-600">
-                Quando voce me passar o fluxo exato, eu conecto essa tela ao
-                banco e fecho a autenticacao.
+                Uma base organizada para acompanhar a rotina operacional de
+                forma mais clara e confiavel.
               </p>
             </div>
           </div>
@@ -118,8 +118,8 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
             </div>
 
             <div className="rounded-2xl border border-amber-200/70 bg-amber-50/50 px-4 py-3 text-sm text-amber-900">
-              Login provisório para validação visual. O fluxo real de contas e
-              permissões entra na próxima etapa com a sua ajuda.
+              Acesse o ambiente para visualizar a estrutura principal do
+              sistema e navegar pelas areas operacionais.
             </div>
 
             <button

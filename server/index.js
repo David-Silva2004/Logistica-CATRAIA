@@ -7,6 +7,7 @@ import { postgresPool } from "./database/postgres.js";
 const PORT = Number(process.env.PORT || 3001);
 const projectRoot = process.cwd();
 const distRoot = path.join(projectRoot, "dist");
+const schemaPath = path.join(projectRoot, "server", "database", "schema.sql");
 
 const contentTypes = {
   ".css": "text/css; charset=utf-8",
@@ -76,6 +77,11 @@ async function readJsonBody(request) {
   }
 
   return JSON.parse(body);
+}
+
+async function ensureDatabaseSchema() {
+  const sql = await fs.readFile(schemaPath, "utf-8");
+  await postgresPool.query(sql);
 }
 
 function normalizeOperation(row) {
@@ -430,9 +436,17 @@ const server = http.createServer(async (request, response) => {
   }
 });
 
-server.listen(PORT, () => {
-  console.log(`API online em http://localhost:${PORT}`);
-});
+try {
+  await ensureDatabaseSchema();
+  console.log("Schema do banco garantido com sucesso.");
+
+  server.listen(PORT, () => {
+    console.log(`API online em http://localhost:${PORT}`);
+  });
+} catch (error) {
+  console.error("Falha ao inicializar banco de dados:", error.message);
+  process.exit(1);
+}
 
 for (const signal of ["SIGINT", "SIGTERM"]) {
   process.on(signal, async () => {

@@ -45,7 +45,7 @@ export function TopBar({
 
               <div>
                 <h1 className="text-lg font-black text-slate-900">
-                  Logistica CATRAIA
+                  Logistica Fabiana
                 </h1>
                 <p className="text-xs text-slate-500 -mt-0.5">
                   Controle de operacoes

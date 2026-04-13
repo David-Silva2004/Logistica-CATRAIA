@@ -33,7 +33,7 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
         <section className="rounded-[2rem] border border-black/5 bg-white/88 p-8 shadow-[0_20px_60px_rgba(15,23,42,0.06)] backdrop-blur">
           <div className="inline-flex items-center gap-3 rounded-full border border-amber-200/80 bg-amber-50/70 px-4 py-2 text-sm font-semibold text-amber-900">
             <Anchor size={18} />
-            Logistica CATRAIA
+            Logistica Fabiana
           </div>
 
           <h1 className="mt-6 max-w-xl text-4xl font-black tracking-tight text-slate-900 md:text-5xl">

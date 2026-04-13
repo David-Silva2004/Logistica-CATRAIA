@@ -1,0 +1,80 @@
+import { Anchor, CheckCircle2, Clock3, Users } from "lucide-react";
+
+interface DashboardCardsProps {
+  totalOperations: number;
+  openOperations: number;
+  finishedOperations: number;
+  activeOperators: number;
+}
+
+export function DashboardCards({
+  totalOperations,
+  openOperations,
+  finishedOperations,
+  activeOperators,
+}: DashboardCardsProps) {
+  const cards = [
+    {
+      title: "Operacoes no periodo",
+      value: totalOperations,
+      icon: Anchor,
+      bgColor: "bg-white",
+      iconBg: "bg-amber-50",
+      borderColor: "border-black/5",
+      textColor: "text-slate-900",
+    },
+    {
+      title: "Operacoes abertas",
+      value: openOperations,
+      icon: Clock3,
+      bgColor: "bg-white",
+      iconBg: "bg-amber-50",
+      borderColor: "border-black/5",
+      textColor: "text-slate-900",
+    },
+    {
+      title: "Operacoes finalizadas",
+      value: finishedOperations,
+      icon: CheckCircle2,
+      bgColor: "bg-white",
+      iconBg: "bg-amber-50",
+      borderColor: "border-black/5",
+      textColor: "text-slate-900",
+    },
+    {
+      title: "Operadores em acao",
+      value: activeOperators,
+      icon: Users,
+      bgColor: "bg-white",
+      iconBg: "bg-amber-50",
+      borderColor: "border-black/5",
+      textColor: "text-slate-900",
+    },
+  ];
+
+  return (
+    <div className="mb-6 grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-4">
+      {cards.map((card) => {
+        const Icon = card.icon;
+        return (
+          <div
+            key={card.title}
+            className={`${card.bgColor} ${card.textColor} rounded-2xl border p-6 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md ${card.borderColor}`}
+          >
+            <div className="flex items-start justify-between">
+              <div className="flex-1">
+                <p className="mb-2 text-sm font-medium text-slate-500">
+                  {card.title}
+                </p>
+                <p className="text-4xl font-black tracking-tight">{card.value}</p>
+              </div>
+              <div className={`${card.iconBg} rounded-xl p-3`}>
+                <Icon size={28} className="text-amber-700" />
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { DashboardCards } from "./components/DashboardCards";
 import { DailyOperationsReport } from "./components/DailyOperationsReport";
+import { DesktopWindowBar } from "./components/DesktopWindowBar";
 import { EmptyState } from "./components/EmptyState";
 import { ErrorState } from "./components/ErrorState";
 import { LanchaUsageReport } from "./components/LanchaUsageReport";
@@ -563,41 +564,47 @@ export default function App() {
     );
   };
 
-  if (!session) {
-    return <LoginScreen onLogin={handleLogin} />;
-  }
-
   return (
     <div className="flex min-h-screen flex-col bg-gradient-to-br from-[#fbfaf7] via-[#f6f4ef] to-[#fcfbf8]">
-      <TopBar
-        selectedDate={selectedDate}
-        onDateChange={setSelectedDate}
-        activeView={activeView}
-        onViewChange={setActiveView}
-        currentUserName={session.name}
-        currentUserRole={session.role}
-        onLogout={handleLogout}
-      />
+      <DesktopWindowBar />
 
-      <main className="flex-1 overflow-y-auto p-6">
-        <div className="mx-auto max-w-[1600px]">{renderMainContent()}</div>
-      </main>
+      {!session ? (
+        <main className="flex-1">
+          <LoginScreen onLogin={handleLogin} />
+        </main>
+      ) : (
+        <>
+          <TopBar
+            selectedDate={selectedDate}
+            onDateChange={setSelectedDate}
+            activeView={activeView}
+            onViewChange={setActiveView}
+            currentUserName={session.name}
+            currentUserRole={session.role}
+            onLogout={handleLogout}
+          />
 
-      <OperationModal
-        isOpen={isModalOpen}
-        onClose={() => {
-          setIsModalOpen(false);
-          setOperationModalMode("create");
-          setEditingOperation(null);
-        }}
-        onSave={handleSaveOperation}
-        mode={operationModalMode}
-        operation={editingOperation}
-        operations={operations}
-        operators={options.operators}
-        lanchas={options.lanchas}
-        statuses={options.statuses}
-      />
+          <main className="flex-1 overflow-y-auto p-6">
+            <div className="mx-auto max-w-[1600px]">{renderMainContent()}</div>
+          </main>
+
+          <OperationModal
+            isOpen={isModalOpen}
+            onClose={() => {
+              setIsModalOpen(false);
+              setOperationModalMode("create");
+              setEditingOperation(null);
+            }}
+            onSave={handleSaveOperation}
+            mode={operationModalMode}
+            operation={editingOperation}
+            operations={operations}
+            operators={options.operators}
+            lanchas={options.lanchas}
+            statuses={options.statuses}
+          />
+        </>
+      )}
     </div>
   );
 }

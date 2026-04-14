@@ -8,19 +8,19 @@
   --card-foreground: oklch(0.145 0 0);
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.145 0 0);
-  --primary: #c8a748;
-  --primary-foreground: #3b2f12;
-  --secondary: #f7f2e3;
-  --secondary-foreground: #54472c;
-  --muted: #f5f3ed;
+  --primary: #0093d9;
+  --primary-foreground: #ffffff;
+  --secondary: #fff8d8;
+  --secondary-foreground: #71570a;
+  --muted: #f4fafe;
   --muted-foreground: #7a705d;
-  --accent: #f4ebcf;
-  --accent-foreground: #4e4329;
+  --accent: #f4c600;
+  --accent-foreground: #3d3200;
   --destructive: #d4183d;
   --destructive-foreground: #ffffff;
   --border: rgba(0, 0, 0, 0.1);
   --input: transparent;
-  --input-background: #f7f4ec;
+  --input-background: #f6fbfe;
   --switch-background: #cbced4;
   --font-weight-medium: 500;
   --font-weight-normal: 400;
@@ -126,6 +126,18 @@
 
   body {
     @apply bg-background text-foreground;
+    background-image:
+      radial-gradient(circle at top left, rgba(244, 198, 0, 0.08), transparent 24%),
+      radial-gradient(circle at top right, rgba(0, 147, 217, 0.08), transparent 28%),
+      linear-gradient(180deg, #ffffff 0%, #fbfdff 100%);
+  }
+
+  [data-app-region="drag"] {
+    -webkit-app-region: drag;
+  }
+
+  [data-app-region="no-drag"] {
+    -webkit-app-region: no-drag;
   }
 
   /**

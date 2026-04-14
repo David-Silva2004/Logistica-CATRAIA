@@ -15,7 +15,8 @@
     "dev:client": "vite",
     "dev:server": "node server/index.js",
     "pack:desktop": "npm run build && electron-builder --win nsis",
-    "pack:portable": "npm run build && electron-builder --win portable"
+    "pack:portable": "npm run build && electron-builder --win portable",
+    "updates:serve": "node server/scripts/serve-updates.js"
   },
   "dependencies": {
     "@emotion/react": "11.14.0",
@@ -54,6 +55,7 @@
     "clsx": "2.1.1",
     "cmdk": "1.1.1",
     "date-fns": "3.6.0",
+    "electron-updater": "^6.8.3",
     "embla-carousel-react": "8.6.0",
     "input-otp": "1.4.2",
     "lucide-react": "0.487.0",
@@ -116,11 +118,17 @@
       ".env.example"
     ],
     "win": {
+      "icon": "build/icon.ico",
       "signAndEditExecutable": false,
       "target": [
         "nsis",
         "portable"
       ]
+    },
+    "nsis": {
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "installerHeaderIcon": "build/icon.ico"
     }
   }
 }

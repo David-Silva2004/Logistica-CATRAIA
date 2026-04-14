@@ -1,4 +1,4 @@
-import { Anchor } from "lucide-react";
+import { BrandLogo } from "./BrandLogo";
 
 interface EmptyStateProps {
   onAdd: () => void;
@@ -11,9 +11,11 @@ export function EmptyState({ onAdd, missingItems }: EmptyStateProps) {
   return (
     <div className="rounded-[2rem] border border-black/5 bg-white p-12 text-center shadow-xl">
       <div className="mx-auto max-w-md">
-        <div className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-full border border-amber-200 bg-amber-50">
-          <Anchor size={40} className="text-amber-700" />
-        </div>
+        <BrandLogo
+          variant="icon"
+          className="mx-auto mb-6"
+          imageClassName="h-20 w-20 rounded-[1.7rem] shadow-[0_14px_30px_rgba(0,147,217,0.14)]"
+        />
         <h3 className="mb-3 text-2xl font-black text-slate-900">
           Nenhuma operacao cadastrada
         </h3>
@@ -24,7 +26,7 @@ export function EmptyState({ onAdd, missingItems }: EmptyStateProps) {
         </p>
         <button
           onClick={onAdd}
-          className="rounded-xl border border-amber-200 bg-amber-100 px-6 py-3 font-bold text-amber-950 transition-colors hover:bg-amber-200"
+          className="rounded-xl border border-[#148fca] bg-[#0093d9] px-6 py-3 font-bold text-white transition-colors hover:bg-[#0a86c5]"
         >
           Abrir modal de operacao
         </button>

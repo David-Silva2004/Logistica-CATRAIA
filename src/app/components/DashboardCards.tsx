@@ -18,36 +18,36 @@ export function DashboardCards({
       title: "Operacoes no periodo",
       value: totalOperations,
       icon: Anchor,
-      bgColor: "bg-white",
-      iconBg: "bg-amber-50",
-      borderColor: "border-black/5",
+      bgColor: "bg-[linear-gradient(180deg,#ffffff_0%,#f7fbfe_100%)]",
+      iconBg: "bg-[#eaf6fd]",
+      borderColor: "border-[#d7ecf8]",
       textColor: "text-slate-900",
     },
     {
       title: "Operacoes abertas",
       value: openOperations,
       icon: Clock3,
-      bgColor: "bg-white",
-      iconBg: "bg-amber-50",
-      borderColor: "border-black/5",
+      bgColor: "bg-[linear-gradient(180deg,#ffffff_0%,#fffdf4_100%)]",
+      iconBg: "bg-[#fff8da]",
+      borderColor: "border-[#f2e3a2]",
       textColor: "text-slate-900",
     },
     {
       title: "Operacoes finalizadas",
       value: finishedOperations,
       icon: CheckCircle2,
-      bgColor: "bg-white",
-      iconBg: "bg-amber-50",
-      borderColor: "border-black/5",
+      bgColor: "bg-[linear-gradient(180deg,#ffffff_0%,#f7fbfe_100%)]",
+      iconBg: "bg-[#eaf6fd]",
+      borderColor: "border-[#d7ecf8]",
       textColor: "text-slate-900",
     },
     {
       title: "Operadores em acao",
       value: activeOperators,
       icon: Users,
-      bgColor: "bg-white",
-      iconBg: "bg-amber-50",
-      borderColor: "border-black/5",
+      bgColor: "bg-[linear-gradient(180deg,#ffffff_0%,#fffdf4_100%)]",
+      iconBg: "bg-[#fff8da]",
+      borderColor: "border-[#f2e3a2]",
       textColor: "text-slate-900",
     },
   ];
@@ -69,7 +69,7 @@ export function DashboardCards({
                 <p className="text-4xl font-black tracking-tight">{card.value}</p>
               </div>
               <div className={`${card.iconBg} rounded-xl p-3`}>
-                <Icon size={28} className="text-amber-700" />
+                <Icon size={28} className="text-[#0a8bce]" />
               </div>
             </div>
           </div>

@@ -8,6 +8,7 @@ import {
   Settings,
   User,
 } from "lucide-react";
+import { BrandLogo } from "./BrandLogo";
 
 interface TopBarProps {
   selectedDate: string;
@@ -36,24 +37,15 @@ export function TopBar({
   ];
 
   return (
-    <header className="border-b border-black/5 bg-white/90 shadow-sm backdrop-blur">
+    <header className="border-b border-[#d8edf8] bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(244,250,254,0.94))] shadow-[0_12px_32px_rgba(8,70,106,0.05)] backdrop-blur">
       <div className="px-6 py-3">
         <div className="flex items-center justify-between gap-4 flex-wrap">
           <div className="flex items-center gap-8 flex-wrap">
-            <div className="flex items-center gap-3">
-              <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-amber-200 bg-amber-50">
-                <Anchor size={22} className="text-amber-700" />
-              </div>
-
-              <div>
-                <h1 className="text-lg font-black text-slate-900">
-                  Logistica Fabiana
-                </h1>
-                <p className="text-xs text-slate-500 -mt-0.5">
-                  Controle de operacoes
-                </p>
-              </div>
-            </div>
+            <BrandLogo
+              variant="name"
+              subtitle=""
+              titleClassName="text-[2rem]"
+            />
 
             <nav className="flex items-center gap-1 flex-wrap">
               {menuItems.map((item) => {
@@ -66,8 +58,8 @@ export function TopBar({
                     onClick={() => onViewChange(item.id)}
                     className={`flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition-all ${
                       isActive
-                        ? "border border-amber-200 bg-amber-50 text-amber-900"
-                        : "text-slate-700 hover:bg-slate-50"
+                        ? "border border-[#b9e3f6] bg-[#e8f6fd] text-[#0a83c2] shadow-[0_10px_24px_rgba(0,147,217,0.10)]"
+                        : "text-slate-700 hover:bg-[#f2f9fd] hover:text-[#0a83c2]"
                     }`}
                   >
                     <Icon size={16} />
@@ -79,8 +71,8 @@ export function TopBar({
           </div>
 
           <div className="flex items-center gap-4 flex-wrap">
-            <div className="flex items-center gap-2 rounded-xl border border-black/8 bg-slate-50 px-3 py-2">
-              <Calendar size={16} className="text-amber-700" />
+            <div className="flex items-center gap-2 rounded-xl border border-[#d9edf8] bg-[#f6fbfe] px-3 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)]">
+              <Calendar size={16} className="text-[#0a8bce]" />
               <input
                 type="date"
                 value={selectedDate}
@@ -89,12 +81,12 @@ export function TopBar({
               />
             </div>
 
-            <button className="relative rounded-xl p-2 transition-colors hover:bg-slate-50">
+            <button className="relative rounded-xl p-2 transition-colors hover:bg-[#f2f9fd]">
               <Bell size={18} className="text-slate-600" />
-              <span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-red-500" />
+              <span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-[#f4c600]" />
             </button>
 
-            <div className="flex items-center gap-2 border-l border-black/8 pl-4">
+            <div className="flex items-center gap-2 border-l border-[#d8edf8] pl-4">
               <div className="text-right">
                 <p className="text-xs font-bold text-slate-900">
                   {currentUserName}
@@ -104,13 +96,13 @@ export function TopBar({
                 </p>
               </div>
 
-              <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-amber-200 bg-amber-50">
-                <User size={18} className="text-amber-700" />
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-[#d7eaf7] bg-[#eff8fd]">
+                <User size={18} className="text-[#0a8bce]" />
               </div>
 
               <button
                 onClick={onLogout}
-                className="rounded-xl p-2 text-slate-500 transition-colors hover:bg-slate-50 hover:text-amber-900"
+                className="rounded-xl p-2 text-slate-500 transition-colors hover:bg-[#fff8d7] hover:text-[#0a83c2]"
                 title="Sair"
               >
                 <LogOut size={18} />

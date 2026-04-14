@@ -5,14 +5,8 @@ import {
   type FormEvent,
   type KeyboardEvent,
 } from "react";
-import {
-  AlertTriangle,
-  Anchor,
-  ArrowRight,
-  Eye,
-  EyeOff,
-  ShieldCheck,
-} from "lucide-react";
+import { AlertTriangle, ArrowRight, Eye, EyeOff } from "lucide-react";
+import { BrandLogo } from "./BrandLogo";
 import type { AuthSession, AuthStatusPayload } from "../types";
 
 interface LoginScreenProps {
@@ -314,15 +308,21 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
   const passwordInputType = isPasswordVisible ? "text" : "password";
 
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(245,158,11,0.10),_transparent_28%),linear-gradient(135deg,_#fcfbf7_0%,_#f8f6f1_55%,_#fdfcf9_100%)] px-4 py-10">
-      <div className="mx-auto grid min-h-[calc(100vh-5rem)] max-w-6xl items-center gap-8 lg:grid-cols-[1.1fr_0.9fr]">
-        <section className="rounded-[2rem] border border-black/5 bg-white/88 p-8 shadow-[0_20px_60px_rgba(15,23,42,0.06)] backdrop-blur">
-          <div className="inline-flex items-center gap-3 rounded-full border border-amber-200/80 bg-amber-50/70 px-4 py-2 text-sm font-semibold text-amber-900">
-            <Anchor size={18} />
-            Logistica Fabiana
+    <div className="min-h-full bg-[radial-gradient(circle_at_top_left,_rgba(244,198,0,0.15),_transparent_26%),radial-gradient(circle_at_top_right,_rgba(0,147,217,0.14),_transparent_30%),linear-gradient(135deg,_#fcfdfd_0%,_#f4fafe_48%,_#fffdf4_100%)] px-4 py-10">
+      <div className="mx-auto grid min-h-[calc(100vh-8.5rem)] max-w-6xl items-center gap-8 lg:grid-cols-[1.1fr_0.9fr]">
+        <section className="rounded-[2rem] border border-[#d7ecf8] bg-[linear-gradient(180deg,rgba(255,255,255,0.92),rgba(246,251,254,0.88))] p-8 shadow-[0_24px_80px_rgba(6,67,104,0.09)] backdrop-blur">
+          <div className="inline-flex items-center gap-3 rounded-full border border-[#d8edf8] bg-white/88 px-4 py-2 text-sm font-semibold text-[#0b86c7]">
+            Operacao maritima organizada
           </div>
 
-          <h1 className="mt-6 max-w-xl text-4xl font-black tracking-tight text-slate-900 md:text-5xl">
+          <div className="mt-6">
+            <BrandLogo
+              variant="full"
+              imageClassName="w-[320px] max-w-full drop-shadow-[0_10px_30px_rgba(0,147,217,0.10)]"
+            />
+          </div>
+
+          <h1 className="mt-8 max-w-xl text-4xl font-black tracking-tight text-slate-900 md:text-5xl">
             Gestao operacional com clareza e praticidade.
           </h1>
 
@@ -333,8 +333,8 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
           </p>
 
           <div className="mt-8 grid gap-4 md:grid-cols-2">
-            <div className="rounded-2xl border border-black/5 bg-slate-50/70 p-5">
-              <p className="text-xs font-bold uppercase tracking-[0.2em] text-amber-700">
+            <div className="rounded-2xl border border-[#d7ecf8] bg-[#f5fbfe] p-5 shadow-[0_12px_30px_rgba(0,147,217,0.06)]">
+              <p className="text-xs font-bold uppercase tracking-[0.2em] text-[#0a8bce]">
                 Operacao
               </p>
               <p className="mt-2 text-base font-semibold text-slate-900">
@@ -346,8 +346,8 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
               </p>
             </div>
 
-            <div className="rounded-2xl border border-black/5 bg-slate-50/70 p-5">
-              <p className="text-xs font-bold uppercase tracking-[0.2em] text-amber-700">
+            <div className="rounded-2xl border border-[#f3e29b] bg-[#fff8d9] p-5 shadow-[0_12px_30px_rgba(244,198,0,0.08)]">
+              <p className="text-xs font-bold uppercase tracking-[0.2em] text-[#bb9200]">
                 Gestao
               </p>
               <p className="mt-2 text-base font-semibold text-slate-900">
@@ -361,13 +361,15 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
           </div>
         </section>
 
-        <section className="rounded-[2rem] border border-black/5 bg-white p-8 shadow-[0_20px_60px_rgba(15,23,42,0.08)]">
+        <section className="rounded-[2rem] border border-[#d7ecf8] bg-white p-8 shadow-[0_24px_80px_rgba(6,67,104,0.10)]">
           <div className="mb-6 flex items-center gap-3">
-            <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3">
-              <ShieldCheck className="text-amber-700" size={24} />
-            </div>
+            <BrandLogo
+              variant="name"
+              subtitle=""
+              titleClassName="text-2xl"
+            />
             <div>
-              <p className="text-sm font-semibold uppercase tracking-[0.15em] text-amber-700">
+              <p className="text-sm font-semibold uppercase tracking-[0.15em] text-[#0a8bce]">
                 Acesso
               </p>
               <h2 className="text-2xl font-black text-slate-900">
@@ -377,7 +379,7 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
           </div>
 
           {isCheckingAccess ? (
-            <div className="rounded-2xl border border-amber-200/70 bg-amber-50/50 px-4 py-3 text-sm text-amber-900">
+            <div className="rounded-2xl border border-[#d7ecf8] bg-[#f2f9fd] px-4 py-3 text-sm text-[#0b86c7]">
               Verificando os usuarios cadastrados no PostgreSQL...
             </div>
           ) : (
@@ -422,7 +424,7 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
                     className={`w-full rounded-2xl border bg-slate-50/70 px-4 py-3 text-slate-900 outline-none transition-colors ${
                       nameError
                         ? "border-red-300 focus:border-red-400"
-                        : "border-black/8 focus:border-amber-300"
+                        : "border-[#d7ecf8] focus:border-[#7dcdf0]"
                     }`}
                   />
                   {nameError && (
@@ -447,7 +449,7 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
                   className={`w-full rounded-2xl border bg-slate-50/70 px-4 py-3 text-slate-900 outline-none transition-colors ${
                     loginError
                       ? "border-red-300 focus:border-red-400"
-                      : "border-black/8 focus:border-amber-300"
+                      : "border-[#d7ecf8] focus:border-[#7dcdf0]"
                   }`}
                 />
                 {loginError && (
@@ -478,13 +480,13 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
                     className={`w-full rounded-2xl border bg-slate-50/70 px-4 py-3 pr-12 text-slate-900 outline-none transition-colors ${
                       passwordError
                         ? "border-red-300 focus:border-red-400"
-                        : "border-black/8 focus:border-amber-300"
+                        : "border-[#d7ecf8] focus:border-[#7dcdf0]"
                     }`}
                   />
                   <button
                     type="button"
                     onClick={() => setIsPasswordVisible((current) => !current)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 rounded-lg p-1 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 rounded-lg p-1 text-slate-500 transition-colors hover:bg-[#eef8fd] hover:text-[#0a8bce]"
                     title={isPasswordVisible ? "Ocultar senha" : "Mostrar senha"}
                   >
                     {isPasswordVisible ? <EyeOff size={18} /> : <Eye size={18} />}
@@ -531,7 +533,7 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
                     className={`w-full rounded-2xl border bg-slate-50/70 px-4 py-3 text-slate-900 outline-none transition-colors ${
                       passwordConfirmationError
                         ? "border-red-300 focus:border-red-400"
-                        : "border-black/8 focus:border-amber-300"
+                        : "border-[#d7ecf8] focus:border-[#7dcdf0]"
                     }`}
                   />
                   {passwordConfirmationError && (
@@ -542,19 +544,19 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
                 </div>
               )}
 
-              <label className="flex items-start gap-3 rounded-2xl border border-black/5 bg-slate-50/70 px-4 py-3 text-sm text-slate-700">
+              <label className="flex items-start gap-3 rounded-2xl border border-[#d7ecf8] bg-[#f7fbfe] px-4 py-3 text-sm text-slate-700">
                 <input
                   type="checkbox"
                   checked={rememberUser}
                   onChange={(event) => setRememberUser(event.target.checked)}
-                  className="mt-1 h-4 w-4 rounded border-slate-300 text-amber-700 focus:ring-amber-500"
+                  className="mt-1 h-4 w-4 rounded border-slate-300 text-[#0a8bce] focus:ring-[#8ed2f0]"
                 />
                 <span>
                   Lembrar meu acesso neste computador.
                 </span>
               </label>
 
-              <div className="rounded-2xl border border-amber-200/70 bg-amber-50/50 px-4 py-3 text-sm text-amber-900">
+              <div className="rounded-2xl border border-[#f1df94] bg-[#fff8d8] px-4 py-3 text-sm text-[#9d7a00]">
                 {requiresInitialUser
                   ? "Esse acesso sera salvo no PostgreSQL e usado como entrada oficial do sistema."
                   : "A autenticacao agora usa usuario e senha cadastrados no PostgreSQL da empresa."}
@@ -563,7 +565,7 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
               <button
                 type="submit"
                 disabled={isSubmitting}
-                className="flex w-full items-center justify-center gap-2 rounded-2xl border border-amber-200 bg-amber-100 px-5 py-3 font-bold text-amber-950 transition-colors hover:bg-amber-200 disabled:cursor-not-allowed disabled:opacity-70"
+                className="flex w-full items-center justify-center gap-2 rounded-2xl border border-[#148fca] bg-[#0093d9] px-5 py-3 font-bold text-white shadow-[0_16px_30px_rgba(0,147,217,0.22)] transition-colors hover:bg-[#0a86c5] disabled:cursor-not-allowed disabled:opacity-70"
               >
                 {isSubmitting
                   ? requiresInitialUser

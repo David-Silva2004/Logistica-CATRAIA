@@ -36,6 +36,8 @@ PGDATABASE=example_catraia
 PGUSER=example_catraia_user
 PGPASSWORD=sua_senha
 PGSSL=false
+AUTO_UPDATE_URL=
+AUTO_UPDATE_CHECK_MINUTES=30
 ```
 
 Configuracao minima obrigatoria hoje:
@@ -46,6 +48,7 @@ Configuracao minima obrigatoria hoje:
 - `PGUSER`
 - `PGPASSWORD`
 - `PGSSL=false`
+- `AUTO_UPDATE_URL` (opcional)
 
 No modo desktop empacotado, essas mesmas variaveis ficam em:
 
@@ -104,6 +107,8 @@ Gera o arquivo:
 
 - `release/Logistica CATRAIA 0.0.1.exe`
 
+Observacao: o executavel portatil nao e a opcao recomendada para auto-update.
+
 ### Instalador Windows
 
 ```bash
@@ -114,6 +119,23 @@ Gera os arquivos:
 
 - `release/Logistica CATRAIA Setup 0.0.1.exe`
 - `release/Logistica CATRAIA Setup 0.0.1.exe.blockmap`
+
+### Servidor de updates na rede local
+
+Depois de gerar uma nova versao, publique a pasta `release` por HTTP:
+
+```bash
+npm run updates:serve
+```
+
+Exemplo de configuracao no PC cliente:
+
+```env
+AUTO_UPDATE_URL=http://192.168.1.63:8090
+AUTO_UPDATE_CHECK_MINUTES=30
+```
+
+Para receber atualizacoes automaticas no Windows, prefira instalar pelo `Setup.exe`.
 
 ### Configuracao do banco no desktop
 

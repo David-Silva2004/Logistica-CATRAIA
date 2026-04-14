@@ -5,9 +5,15 @@ import path from "node:path";
 const { Pool } = pg;
 
 function loadEnvFile() {
-  const envPath = path.join(process.cwd(), ".env");
+  const candidates = [
+    process.env.APP_ENV_PATH,
+    path.join(process.cwd(), ".env"),
+    process.env.APP_ROOT ? path.join(process.env.APP_ROOT, ".env") : null,
+  ].filter(Boolean);
 
-  if (!fs.existsSync(envPath)) {
+  const envPath = candidates.find((candidatePath) => fs.existsSync(candidatePath));
+
+  if (!envPath) {
     return;
   }
 

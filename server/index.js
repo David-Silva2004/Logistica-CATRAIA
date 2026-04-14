@@ -1,13 +1,14 @@
 import http from "node:http";
+import { randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { URL } from "node:url";
-import { postgresPool } from "./database/postgres.js";
+import { URL, pathToFileURL } from "node:url";
+import {
+  closePostgresConnection,
+  postgresPool,
+} from "./database/postgres.js";
 
 const PORT = Number(process.env.PORT || 3001);
-const projectRoot = process.cwd();
-const distRoot = path.join(projectRoot, "dist");
-const schemaPath = path.join(projectRoot, "server", "database", "schema.sql");
 
 const contentTypes = {
   ".css": "text/css; charset=utf-8",
@@ -20,6 +21,19 @@ const contentTypes = {
   ".jpeg": "image/jpeg",
   ".ico": "image/x-icon",
 };
+
+const PASSWORD_HASH_PREFIX = "scrypt";
+const USER_ROLE_ADMIN = "admin";
+const USER_ROLE_NORMAL = "normal";
+const OPERATION_STATUS_RULES_BY_TYPE = {
+  // Preencha aqui quando definirmos a matriz exata de status por tipo de lancha.
+};
+
+function createHttpError(statusCode, message) {
+  const error = new Error(message);
+  error.statusCode = statusCode;
+  return error;
+}
 
 function sendJson(response, statusCode, payload) {
   response.writeHead(statusCode, {
@@ -39,7 +53,11 @@ async function sendFile(response, filePath) {
   response.end(fileContents);
 }
 
-async function tryServeStatic(requestUrl, response) {
+function resolveProjectRoot(projectRoot) {
+  return projectRoot || process.env.APP_ROOT || process.cwd();
+}
+
+async function tryServeStatic(requestUrl, response, distRoot) {
   const pathname = requestUrl.pathname === "/" ? "/index.html" : requestUrl.pathname;
   const normalizedPath = path.normalize(path.join(distRoot, pathname));
 
@@ -79,9 +97,91 @@ async function readJsonBody(request) {
   return JSON.parse(body);
 }
 
-async function ensureDatabaseSchema() {
+async function ensureDatabaseSchema(schemaPath) {
   const sql = await fs.readFile(schemaPath, "utf-8");
   await postgresPool.query(sql);
+}
+
+function normalizeLogin(value) {
+  return requireText(value, "login")
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, ".");
+}
+
+function normalizeOptionalEmail(value) {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const normalized = value.trim().toLowerCase();
+  return normalized || null;
+}
+
+function normalizeUserRole(value, fallback = USER_ROLE_NORMAL) {
+  const normalized =
+    typeof value === "string" ? value.trim().toLowerCase() : fallback;
+
+  if (![USER_ROLE_ADMIN, USER_ROLE_NORMAL].includes(normalized)) {
+    throw new Error("tipoUsuario invalido.");
+  }
+
+  return normalized;
+}
+
+function requirePassword(value) {
+  const password = typeof value === "string" ? value : "";
+
+  if (!password.trim()) {
+    throw new Error("password is required.");
+  }
+
+  if (password.length < 6) {
+    throw new Error("password must contain at least 6 characters.");
+  }
+
+  return password;
+}
+
+function createPasswordHash(password) {
+  const salt = randomBytes(16).toString("hex");
+  const hash = scryptSync(password, salt, 64).toString("hex");
+
+  return `${PASSWORD_HASH_PREFIX}$${salt}$${hash}`;
+}
+
+function verifyPasswordHash(password, storedPassword) {
+  const [, salt, storedHash] = storedPassword.split("$");
+
+  if (!salt || !storedHash) {
+    return false;
+  }
+
+  const candidateHash = scryptSync(password, salt, 64);
+  const referenceHash = Buffer.from(storedHash, "hex");
+
+  if (referenceHash.length !== candidateHash.length) {
+    return false;
+  }
+
+  return timingSafeEqual(candidateHash, referenceHash);
+}
+
+function normalizeBusinessLabel(value) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLowerCase();
+}
+
+function normalizeAuthUser(row) {
+  return {
+    id: row.id_usuario,
+    name: row.nome_usuario,
+    login: row.login_usuario,
+    email: row.email_usuario ?? null,
+    role: row.tipo_usuario,
+  };
 }
 
 function normalizeOperation(row) {
@@ -124,7 +224,11 @@ async function getOptions() {
       ORDER BY status ASC
     `),
     postgresPool.query(`
-      SELECT id_usuario AS id, nome_usuario AS label
+      SELECT
+        id_usuario AS id,
+        nome_usuario AS label,
+        login_usuario AS hint,
+        tipo_usuario AS role
       FROM usuarios
       ORDER BY nome_usuario ASC
     `),
@@ -184,16 +288,169 @@ async function getOperations(selectedDate) {
   return result.rows.map(normalizeOperation);
 }
 
-async function createOperation(payload) {
-  const {
-    operatorId,
-    lanchaId,
-    statusId,
-    userId,
+function normalizeOperationDateRange(payload) {
+  const startedAt = requireText(payload.startedAt, "startedAt");
+  const finishedAt =
+    typeof payload.finishedAt === "string" && payload.finishedAt.trim()
+      ? payload.finishedAt.trim()
+      : null;
+  const startedAtDate = new Date(startedAt);
+  const finishedAtDate = finishedAt ? new Date(finishedAt) : null;
+
+  if (Number.isNaN(startedAtDate.getTime())) {
+    throw createHttpError(400, "Informe um inicio de operacao valido.");
+  }
+
+  if (finishedAt && (!finishedAtDate || Number.isNaN(finishedAtDate.getTime()))) {
+    throw createHttpError(400, "Informe um fim de operacao valido.");
+  }
+
+  if (finishedAtDate && finishedAtDate.getTime() <= startedAtDate.getTime()) {
+    throw createHttpError(400, "O fim da operacao precisa ser maior que o inicio.");
+  }
+
+  return {
     startedAt,
     finishedAt,
-    notes,
-  } = payload;
+  };
+}
+
+async function ensureLanchaHasNoTimeConflict({
+  lanchaId,
+  startedAt,
+  finishedAt,
+  ignoreOperationId = null,
+}) {
+  const result = await postgresPool.query(
+    `
+      SELECT
+        o.id_operacao,
+        l.nome_lancha,
+        op.nome_operador
+      FROM operacoes o
+      INNER JOIN lanchas l ON l.id_lancha = o.id_lancha
+      INNER JOIN operadores op ON op.id_operador = o.id_operador
+      WHERE o.id_lancha = $1
+        AND ($2::int IS NULL OR o.id_operacao <> $2::int)
+        AND COALESCE(o.fim_operacao, 'infinity'::timestamp) > $3::timestamp
+        AND COALESCE($4::timestamp, 'infinity'::timestamp) > o.inicio_operacao
+      LIMIT 1
+    `,
+    [Number(lanchaId), ignoreOperationId, startedAt, finishedAt],
+  );
+
+  if (result.rows[0]) {
+    throw createHttpError(
+      400,
+      `A lancha ${result.rows[0].nome_lancha} ja possui uma operacao no periodo informado.`,
+    );
+  }
+}
+
+async function ensureOperatorHasNoOpenConflict({
+  operatorId,
+  finishedAt,
+  ignoreOperationId = null,
+}) {
+  if (finishedAt) {
+    return;
+  }
+
+  const result = await postgresPool.query(
+    `
+      SELECT
+        o.id_operacao,
+        op.nome_operador,
+        l.nome_lancha
+      FROM operacoes o
+      INNER JOIN operadores op ON op.id_operador = o.id_operador
+      INNER JOIN lanchas l ON l.id_lancha = o.id_lancha
+      WHERE o.id_operador = $1
+        AND ($2::int IS NULL OR o.id_operacao <> $2::int)
+        AND o.fim_operacao IS NULL
+      LIMIT 1
+    `,
+    [Number(operatorId), ignoreOperationId],
+  );
+
+  if (result.rows[0]) {
+    throw createHttpError(
+      400,
+      `O operador ${result.rows[0].nome_operador} ja possui uma operacao aberta na lancha ${result.rows[0].nome_lancha}.`,
+    );
+  }
+}
+
+async function ensureValidStatusTypeCombination({ lanchaId, statusId }) {
+  const result = await postgresPool.query(
+    `
+      SELECT
+        t.tipo_lancha,
+        s.status
+      FROM lanchas l
+      INNER JOIN tipo t ON t.id_tipo = l.id_tipo
+      INNER JOIN status s ON s.id_status = $2
+      WHERE l.id_lancha = $1
+      LIMIT 1
+    `,
+    [Number(lanchaId), Number(statusId)],
+  );
+
+  const row = result.rows[0];
+
+  if (!row) {
+    throw createHttpError(
+      400,
+      "Nao foi possivel validar a lancha e o status informados.",
+    );
+  }
+
+  const normalizedType = normalizeBusinessLabel(row.tipo_lancha);
+  const normalizedStatus = normalizeBusinessLabel(row.status);
+  const allowedStatuses = OPERATION_STATUS_RULES_BY_TYPE[normalizedType];
+
+  if (!allowedStatuses || allowedStatuses.length === 0) {
+    return;
+  }
+
+  if (!allowedStatuses.includes(normalizedStatus)) {
+    throw createHttpError(
+      400,
+      `O status ${row.status} nao pode ser usado com lanchas do tipo ${row.tipo_lancha}.`,
+    );
+  }
+}
+
+async function validateOperationBusinessRules(payload, { operationId = null } = {}) {
+  const { startedAt, finishedAt } = normalizeOperationDateRange(payload);
+
+  await ensureLanchaHasNoTimeConflict({
+    lanchaId: payload.lanchaId,
+    startedAt,
+    finishedAt,
+    ignoreOperationId: operationId,
+  });
+
+  await ensureOperatorHasNoOpenConflict({
+    operatorId: payload.operatorId,
+    finishedAt,
+    ignoreOperationId: operationId,
+  });
+
+  await ensureValidStatusTypeCombination({
+    lanchaId: payload.lanchaId,
+    statusId: payload.statusId,
+  });
+
+  return {
+    startedAt,
+    finishedAt,
+  };
+}
+
+async function createOperation(payload) {
+  const { operatorId, lanchaId, statusId, userId, notes } = payload;
+  const { startedAt, finishedAt } = await validateOperationBusinessRules(payload);
 
   const result = await postgresPool.query(
     `
@@ -224,15 +481,11 @@ async function createOperation(payload) {
 }
 
 async function updateOperation(operationId, payload) {
-  const {
-    operatorId,
-    lanchaId,
-    statusId,
-    userId,
-    startedAt,
-    finishedAt,
-    notes,
-  } = payload;
+  const { operatorId, lanchaId, statusId, userId, notes } = payload;
+  const { startedAt, finishedAt } = await validateOperationBusinessRules(
+    payload,
+    { operationId: Number(operationId) },
+  );
 
   const result = await postgresPool.query(
     `
@@ -263,6 +516,19 @@ async function updateOperation(operationId, payload) {
   return result.rows[0]?.id_operacao || null;
 }
 
+async function deleteOperation(operationId) {
+  const result = await postgresPool.query(
+    `
+      DELETE FROM operacoes
+      WHERE id_operacao = $1
+      RETURNING id_operacao
+    `,
+    [Number(operationId)],
+  );
+
+  return result.rows[0]?.id_operacao || null;
+}
+
 function validateOperationPayload(payload) {
   if (!payload.operatorId || !payload.lanchaId || !payload.statusId || !payload.startedAt) {
     return "operatorId, lanchaId, statusId and startedAt are required.";
@@ -281,6 +547,341 @@ function requireText(value, fieldName) {
   return normalized;
 }
 
+async function countUsers() {
+  const result = await postgresPool.query(
+    "SELECT COUNT(*)::int AS total FROM usuarios",
+  );
+
+  return result.rows[0]?.total ?? 0;
+}
+
+async function countAdminUsers() {
+  const result = await postgresPool.query(
+    `
+      SELECT COUNT(*)::int AS total
+      FROM usuarios
+      WHERE tipo_usuario = $1
+    `,
+    [USER_ROLE_ADMIN],
+  );
+
+  return result.rows[0]?.total ?? 0;
+}
+
+async function findUserById(userId) {
+  const result = await postgresPool.query(
+    `
+      SELECT
+        id_usuario,
+        nome_usuario,
+        login_usuario,
+        email_usuario,
+        tipo_usuario,
+        senha_usuario
+      FROM usuarios
+      WHERE id_usuario = $1
+      LIMIT 1
+    `,
+    [Number(userId)],
+  );
+
+  return result.rows[0] || null;
+}
+
+async function findUserByEmail(email) {
+  const result = await postgresPool.query(
+    `
+      SELECT
+        id_usuario,
+        nome_usuario,
+        login_usuario,
+        email_usuario,
+        tipo_usuario,
+        senha_usuario
+      FROM usuarios
+      WHERE LOWER(email_usuario) = LOWER($1)
+      LIMIT 1
+    `,
+    [email],
+  );
+
+  return result.rows[0] || null;
+}
+
+async function findUserByLogin(login) {
+  const result = await postgresPool.query(
+    `
+      SELECT
+        id_usuario,
+        nome_usuario,
+        login_usuario,
+        email_usuario,
+        tipo_usuario,
+        senha_usuario
+      FROM usuarios
+      WHERE LOWER(login_usuario) = LOWER($1)
+      LIMIT 1
+    `,
+    [login],
+  );
+
+  return result.rows[0] || null;
+}
+
+async function findUserByLoginOrEmail(identifier) {
+  const result = await postgresPool.query(
+    `
+      SELECT
+        id_usuario,
+        nome_usuario,
+        login_usuario,
+        email_usuario,
+        tipo_usuario,
+        senha_usuario
+      FROM usuarios
+      WHERE LOWER(login_usuario) = LOWER($1)
+         OR LOWER(email_usuario) = LOWER($1)
+      LIMIT 1
+    `,
+    [identifier],
+  );
+
+  return result.rows[0] || null;
+}
+
+async function getAuthenticatedUserFromRequest(request) {
+  const rawHeader = request.headers["x-user-id"];
+  const userId = Array.isArray(rawHeader) ? rawHeader[0] : rawHeader;
+
+  if (!userId) {
+    throw createHttpError(401, "Sessao invalida. Entre novamente no sistema.");
+  }
+
+  const user = await findUserById(userId);
+
+  if (!user) {
+    throw createHttpError(401, "Sessao invalida. Entre novamente no sistema.");
+  }
+
+  return normalizeAuthUser(user);
+}
+
+function ensureAdminUser(user, message = "Somente administradores podem executar essa acao.") {
+  if (user.role !== USER_ROLE_ADMIN) {
+    throw createHttpError(403, message);
+  }
+}
+
+async function createUser(payload, { firstUserOnly = false } = {}) {
+  const name = requireText(payload.name, "name");
+  const login = normalizeLogin(payload.login);
+  const email = normalizeOptionalEmail(payload.email);
+  const role = firstUserOnly
+    ? USER_ROLE_ADMIN
+    : normalizeUserRole(payload.role, USER_ROLE_NORMAL);
+  const password = requirePassword(payload.password);
+
+  if (firstUserOnly) {
+    const totalUsers = await countUsers();
+
+    if (totalUsers > 0) {
+      throw new Error("Ja existe um usuario cadastrado no sistema.");
+    }
+  }
+
+  if (email) {
+    const existingUser = await findUserByEmail(email);
+
+    if (existingUser) {
+      throw new Error("Ja existe um usuario com esse e-mail.");
+    }
+  }
+
+  const existingLogin = await findUserByLogin(login);
+
+  if (existingLogin?.login_usuario?.toLowerCase() === login) {
+    throw new Error("Ja existe um usuario com esse nome de acesso.");
+  }
+
+  const result = await postgresPool.query(
+    `
+      INSERT INTO usuarios (
+        nome_usuario,
+        login_usuario,
+        email_usuario,
+        tipo_usuario,
+        senha_usuario
+      )
+      VALUES ($1, $2, $3, $4, $5)
+      RETURNING id_usuario, nome_usuario, login_usuario, email_usuario, tipo_usuario
+    `,
+    [name, login, email, role, createPasswordHash(password)],
+  );
+
+  return normalizeAuthUser(result.rows[0]);
+}
+
+async function updateUser(userId, payload, currentUser) {
+  const id = Number(userId);
+  const name = requireText(payload.name, "name");
+  const login = normalizeLogin(payload.login);
+  const role = normalizeUserRole(payload.role, USER_ROLE_NORMAL);
+  const nextPassword =
+    typeof payload.password === "string" ? payload.password.trim() : "";
+  const targetUser = await findUserById(id);
+
+  if (!targetUser) {
+    return null;
+  }
+
+  const existingLogin = await findUserByLogin(login);
+
+  if (existingLogin && existingLogin.id_usuario !== id) {
+    throw new Error("Ja existe um usuario com esse nome de acesso.");
+  }
+
+  if (
+    targetUser.tipo_usuario === USER_ROLE_ADMIN &&
+    role !== USER_ROLE_ADMIN
+  ) {
+    const totalAdmins = await countAdminUsers();
+
+    if (totalAdmins <= 1) {
+      throw new Error("Nao e possivel remover o ultimo administrador do sistema.");
+    }
+  }
+
+  if (currentUser.id === id && currentUser.role === USER_ROLE_ADMIN && role !== USER_ROLE_ADMIN) {
+    throw new Error("Nao e possivel remover seu proprio acesso de administrador.");
+  }
+
+  let result;
+
+  if (nextPassword) {
+    if (nextPassword.length < 6) {
+      throw new Error("password must contain at least 6 characters.");
+    }
+
+    result = await postgresPool.query(
+      `
+        UPDATE usuarios
+        SET
+          nome_usuario = $1,
+          login_usuario = $2,
+          tipo_usuario = $3,
+          senha_usuario = $4
+        WHERE id_usuario = $5
+        RETURNING id_usuario, nome_usuario, login_usuario, email_usuario, tipo_usuario
+      `,
+      [name, login, role, createPasswordHash(nextPassword), id],
+    );
+  } else {
+    result = await postgresPool.query(
+      `
+        UPDATE usuarios
+        SET
+          nome_usuario = $1,
+          login_usuario = $2,
+          tipo_usuario = $3
+        WHERE id_usuario = $4
+        RETURNING id_usuario, nome_usuario, login_usuario, email_usuario, tipo_usuario
+      `,
+      [name, login, role, id],
+    );
+  }
+
+  return result.rows[0] ? normalizeAuthUser(result.rows[0]) : null;
+}
+
+async function deleteUser(userId, currentUser) {
+  const id = Number(userId);
+  const targetUser = await findUserById(id);
+
+  if (!targetUser) {
+    return null;
+  }
+
+  if (currentUser.id === id) {
+    throw new Error("Nao e possivel excluir o usuario que esta logado no momento.");
+  }
+
+  if (targetUser.tipo_usuario === USER_ROLE_ADMIN) {
+    const totalAdmins = await countAdminUsers();
+
+    if (totalAdmins <= 1) {
+      throw new Error("Nao e possivel excluir o ultimo administrador do sistema.");
+    }
+  }
+
+  const linkedOperations = await postgresPool.query(
+    `
+      SELECT 1
+      FROM operacoes
+      WHERE id_usuario = $1
+      LIMIT 1
+    `,
+    [id],
+  );
+
+  if (linkedOperations.rowCount) {
+    throw new Error(
+      "Nao e possivel excluir este usuario porque ele ja esta vinculado a operacoes.",
+    );
+  }
+
+  const result = await postgresPool.query(
+    `
+      DELETE FROM usuarios
+      WHERE id_usuario = $1
+      RETURNING id_usuario, nome_usuario, login_usuario, email_usuario, tipo_usuario
+    `,
+    [id],
+  );
+
+  return result.rows[0] ? normalizeAuthUser(result.rows[0]) : null;
+}
+
+async function authenticateUser(payload) {
+  const identifier = requireText(
+    payload.login || payload.identifier || payload.email,
+    "login",
+  ).toLowerCase();
+  const password = requirePassword(payload.password);
+
+  const user = await findUserByLoginOrEmail(identifier);
+
+  if (!user) {
+    throw new Error("Usuario ou senha invalidos.");
+  }
+
+  let passwordMatches = false;
+  let shouldUpgradePassword = false;
+
+  if (user.senha_usuario.startsWith(`${PASSWORD_HASH_PREFIX}$`)) {
+    passwordMatches = verifyPasswordHash(password, user.senha_usuario);
+  } else {
+    passwordMatches = user.senha_usuario === password;
+    shouldUpgradePassword = passwordMatches;
+  }
+
+  if (!passwordMatches) {
+    throw new Error("Usuario ou senha invalidos.");
+  }
+
+  if (shouldUpgradePassword) {
+    await postgresPool.query(
+      `
+        UPDATE usuarios
+        SET senha_usuario = $1
+        WHERE id_usuario = $2
+      `,
+      [createPasswordHash(password), user.id_usuario],
+    );
+  }
+
+  return normalizeAuthUser(user);
+}
+
 async function createOperator(payload) {
   const name = requireText(payload.name, "name");
   const result = await postgresPool.query(
@@ -293,6 +894,34 @@ async function createOperator(payload) {
   );
 
   return result.rows[0];
+}
+
+async function updateOperator(operatorId, payload) {
+  const name = requireText(payload.name, "name");
+  const result = await postgresPool.query(
+    `
+      UPDATE operadores
+      SET nome_operador = $1
+      WHERE id_operador = $2
+      RETURNING id_operador AS id, nome_operador AS label
+    `,
+    [name, Number(operatorId)],
+  );
+
+  return result.rows[0] || null;
+}
+
+async function deleteOperator(operatorId) {
+  const result = await postgresPool.query(
+    `
+      DELETE FROM operadores
+      WHERE id_operador = $1
+      RETURNING id_operador AS id
+    `,
+    [Number(operatorId)],
+  );
+
+  return result.rows[0] || null;
 }
 
 async function createType(payload) {
@@ -328,129 +957,381 @@ async function createLancha(payload) {
   return result.rows[0];
 }
 
-const server = http.createServer(async (request, response) => {
-  const requestUrl = new URL(request.url || "/", `http://${request.headers.host}`);
+function createHttpServer({ projectRoot }) {
+  const distRoot = path.join(projectRoot, "dist");
+  const schemaPath = path.join(projectRoot, "server", "database", "schema.sql");
 
-  if (request.method === "OPTIONS") {
-    response.writeHead(204, {
-      "Access-Control-Allow-Origin": "*",
-      "Access-Control-Allow-Methods": "GET,POST,PUT,OPTIONS",
-      "Access-Control-Allow-Headers": "Content-Type",
-    });
-    response.end();
-    return;
-  }
+  const server = http.createServer(async (request, response) => {
+    const requestUrl = new URL(
+      request.url || "/",
+      `http://${request.headers.host || "127.0.0.1"}`,
+    );
 
-  try {
-    if (request.method === "GET" && requestUrl.pathname === "/api/health") {
-      await postgresPool.query("SELECT 1");
-      sendJson(response, 200, { ok: true });
+    if (request.method === "OPTIONS") {
+      response.writeHead(204, {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
+      });
+      response.end();
       return;
     }
 
-    if (request.method === "GET" && requestUrl.pathname === "/api/bootstrap") {
-      const selectedDate = requestUrl.searchParams.get("date");
-      const [options, operations] = await Promise.all([
-        getOptions(),
-        getOperations(selectedDate),
-      ]);
-
-      sendJson(response, 200, { options, operations });
-      return;
-    }
-
-    if (request.method === "POST" && requestUrl.pathname === "/api/operations") {
-      const payload = await readJsonBody(request);
-      const validationError = validateOperationPayload(payload);
-
-      if (validationError) {
-        sendJson(response, 400, { error: validationError });
+    try {
+      if (request.method === "GET" && requestUrl.pathname === "/api/health") {
+        await postgresPool.query("SELECT 1");
+        sendJson(response, 200, { ok: true });
         return;
       }
 
-      const createdId = await createOperation(payload);
-      sendJson(response, 201, { id: createdId });
-      return;
-    }
-
-    if (request.method === "POST" && requestUrl.pathname === "/api/operators") {
-      const payload = await readJsonBody(request);
-      const operator = await createOperator(payload);
-      sendJson(response, 201, operator);
-      return;
-    }
-
-    if (request.method === "POST" && requestUrl.pathname === "/api/types") {
-      const payload = await readJsonBody(request);
-      const type = await createType(payload);
-      sendJson(response, 201, type);
-      return;
-    }
-
-    if (request.method === "POST" && requestUrl.pathname === "/api/lanchas") {
-      const payload = await readJsonBody(request);
-      const lancha = await createLancha(payload);
-      sendJson(response, 201, lancha);
-      return;
-    }
-
-    if (request.method === "PUT" && requestUrl.pathname.startsWith("/api/operations/")) {
-      const operationId = requestUrl.pathname.split("/").pop();
-      const payload = await readJsonBody(request);
-      const validationError = validateOperationPayload(payload);
-
-      if (validationError) {
-        sendJson(response, 400, { error: validationError });
+      if (request.method === "GET" && requestUrl.pathname === "/api/auth/status") {
+        const totalUsers = await countUsers();
+        sendJson(response, 200, { hasUsers: totalUsers > 0 });
         return;
       }
 
-      const updatedId = await updateOperation(operationId, payload);
-
-      if (!updatedId) {
-        sendJson(response, 404, { error: "Operation not found." });
+      if (request.method === "POST" && requestUrl.pathname === "/api/auth/login") {
+        const payload = await readJsonBody(request);
+        const session = await authenticateUser(payload);
+        sendJson(response, 200, { session });
         return;
       }
 
-      sendJson(response, 200, { id: updatedId });
-      return;
+      if (
+        request.method === "POST" &&
+        requestUrl.pathname === "/api/auth/bootstrap-admin"
+      ) {
+        const payload = await readJsonBody(request);
+        const session = await createUser(payload, { firstUserOnly: true });
+        sendJson(response, 201, { session });
+        return;
+      }
+
+      if (request.method === "GET" && requestUrl.pathname === "/api/bootstrap") {
+        await getAuthenticatedUserFromRequest(request);
+        const selectedDate = requestUrl.searchParams.get("date");
+        const [options, operations] = await Promise.all([
+          getOptions(),
+          getOperations(selectedDate),
+        ]);
+
+        sendJson(response, 200, { options, operations });
+        return;
+      }
+
+      if (request.method === "POST" && requestUrl.pathname === "/api/operations") {
+        await getAuthenticatedUserFromRequest(request);
+        const payload = await readJsonBody(request);
+        const validationError = validateOperationPayload(payload);
+
+        if (validationError) {
+          sendJson(response, 400, { error: validationError });
+          return;
+        }
+
+        const createdId = await createOperation(payload);
+        sendJson(response, 201, { id: createdId });
+        return;
+      }
+
+      if (request.method === "POST" && requestUrl.pathname === "/api/operators") {
+        await getAuthenticatedUserFromRequest(request);
+        const payload = await readJsonBody(request);
+        const operator = await createOperator(payload);
+        sendJson(response, 201, operator);
+        return;
+      }
+
+      if (
+        request.method === "PUT" &&
+        requestUrl.pathname.startsWith("/api/operators/")
+      ) {
+        const requestUser = await getAuthenticatedUserFromRequest(request);
+        ensureAdminUser(
+          requestUser,
+          "Somente administradores podem editar operadores.",
+        );
+        const operatorId = requestUrl.pathname.split("/").pop();
+        const payload = await readJsonBody(request);
+        const operator = await updateOperator(operatorId, payload);
+
+        if (!operator) {
+          sendJson(response, 404, { error: "Operator not found." });
+          return;
+        }
+
+        sendJson(response, 200, operator);
+        return;
+      }
+
+      if (
+        request.method === "DELETE" &&
+        requestUrl.pathname.startsWith("/api/operators/")
+      ) {
+        const requestUser = await getAuthenticatedUserFromRequest(request);
+        ensureAdminUser(
+          requestUser,
+          "Somente administradores podem excluir operadores.",
+        );
+        const operatorId = requestUrl.pathname.split("/").pop();
+        const deletedOperator = await deleteOperator(operatorId);
+
+        if (!deletedOperator) {
+          sendJson(response, 404, { error: "Operator not found." });
+          return;
+        }
+
+        sendJson(response, 200, deletedOperator);
+        return;
+      }
+
+      if (request.method === "POST" && requestUrl.pathname === "/api/types") {
+        const requestUser = await getAuthenticatedUserFromRequest(request);
+        ensureAdminUser(requestUser);
+        const payload = await readJsonBody(request);
+        const type = await createType(payload);
+        sendJson(response, 201, type);
+        return;
+      }
+
+      if (request.method === "POST" && requestUrl.pathname === "/api/lanchas") {
+        const requestUser = await getAuthenticatedUserFromRequest(request);
+        ensureAdminUser(requestUser);
+        const payload = await readJsonBody(request);
+        const lancha = await createLancha(payload);
+        sendJson(response, 201, lancha);
+        return;
+      }
+
+      if (request.method === "POST" && requestUrl.pathname === "/api/users") {
+        const requestUser = await getAuthenticatedUserFromRequest(request);
+        ensureAdminUser(
+          requestUser,
+          "Somente administradores podem cadastrar usuarios.",
+        );
+        const payload = await readJsonBody(request);
+        const user = await createUser(payload);
+        sendJson(response, 201, {
+          id: user.id,
+          label: user.name,
+          login: user.login,
+          role: user.role,
+        });
+        return;
+      }
+
+      if (
+        request.method === "PUT" &&
+        requestUrl.pathname.startsWith("/api/users/")
+      ) {
+        const requestUser = await getAuthenticatedUserFromRequest(request);
+        ensureAdminUser(
+          requestUser,
+          "Somente administradores podem editar usuarios.",
+        );
+        const userId = requestUrl.pathname.split("/").pop();
+        const payload = await readJsonBody(request);
+        const user = await updateUser(userId, payload, requestUser);
+
+        if (!user) {
+          sendJson(response, 404, { error: "User not found." });
+          return;
+        }
+
+        sendJson(response, 200, {
+          id: user.id,
+          label: user.name,
+          login: user.login,
+          role: user.role,
+        });
+        return;
+      }
+
+      if (
+        request.method === "DELETE" &&
+        requestUrl.pathname.startsWith("/api/users/")
+      ) {
+        const requestUser = await getAuthenticatedUserFromRequest(request);
+        ensureAdminUser(
+          requestUser,
+          "Somente administradores podem excluir usuarios.",
+        );
+        const userId = requestUrl.pathname.split("/").pop();
+        const deletedUser = await deleteUser(userId, requestUser);
+
+        if (!deletedUser) {
+          sendJson(response, 404, { error: "User not found." });
+          return;
+        }
+
+        sendJson(response, 200, {
+          id: deletedUser.id,
+          label: deletedUser.name,
+          login: deletedUser.login,
+          role: deletedUser.role,
+        });
+        return;
+      }
+
+      if (
+        request.method === "PUT" &&
+        requestUrl.pathname.startsWith("/api/operations/")
+      ) {
+        await getAuthenticatedUserFromRequest(request);
+        const operationId = requestUrl.pathname.split("/").pop();
+        const payload = await readJsonBody(request);
+        const validationError = validateOperationPayload(payload);
+
+        if (validationError) {
+          sendJson(response, 400, { error: validationError });
+          return;
+        }
+
+        const updatedId = await updateOperation(operationId, payload);
+
+        if (!updatedId) {
+          sendJson(response, 404, { error: "Operation not found." });
+          return;
+        }
+
+        sendJson(response, 200, { id: updatedId });
+        return;
+      }
+
+      if (
+        request.method === "DELETE" &&
+        requestUrl.pathname.startsWith("/api/operations/")
+      ) {
+        const requestUser = await getAuthenticatedUserFromRequest(request);
+        ensureAdminUser(
+          requestUser,
+          "Somente administradores podem excluir operacoes.",
+        );
+        const operationId = requestUrl.pathname.split("/").pop();
+        const deletedId = await deleteOperation(operationId);
+
+        if (!deletedId) {
+          sendJson(response, 404, { error: "Operation not found." });
+          return;
+        }
+
+        sendJson(response, 200, { id: deletedId });
+        return;
+      }
+
+      const handledStatic = await tryServeStatic(requestUrl, response, distRoot);
+
+      if (handledStatic) {
+        return;
+      }
+
+      sendJson(response, 404, { error: "Route not found." });
+    } catch (error) {
+      const message =
+        error.code === "23503"
+          ? "Nao e possivel excluir este operador porque ele ja esta vinculado a operacoes."
+          : error.message || "Unexpected server error.";
+      const statusCode = error.statusCode
+        ? error.statusCode
+        : error.code === "23505" ||
+            error.code === "23503" ||
+            error.code === "23514" ||
+            error.message?.includes("required") ||
+            error.message?.includes("at least 6 characters") ||
+            error.message?.includes("Ja existe") ||
+            error.message?.includes("violates foreign key constraint") ||
+            error.message?.includes("invalidos")
+          ? 400
+          : 500;
+
+      sendJson(response, statusCode, {
+        error: message,
+      });
     }
-
-    const handledStatic = await tryServeStatic(requestUrl, response);
-
-    if (handledStatic) {
-      return;
-    }
-
-    sendJson(response, 404, { error: "Route not found." });
-  } catch (error) {
-    const statusCode =
-      error.code === "23503" ||
-      error.code === "23514" ||
-      error.message?.includes("required")
-        ? 400
-        : 500;
-
-    sendJson(response, statusCode, {
-      error: error.message || "Unexpected server error.",
-    });
-  }
-});
-
-try {
-  await ensureDatabaseSchema();
-  console.log("Schema do banco garantido com sucesso.");
-
-  server.listen(PORT, () => {
-    console.log(`API online em http://localhost:${PORT}`);
   });
-} catch (error) {
-  console.error("Falha ao inicializar banco de dados:", error.message);
-  process.exit(1);
+
+  return {
+    schemaPath,
+    server,
+  };
 }
 
-for (const signal of ["SIGINT", "SIGTERM"]) {
-  process.on(signal, async () => {
-    await postgresPool.end();
-    server.close(() => process.exit(0));
+export async function startServer({
+  port = PORT,
+  host = "0.0.0.0",
+  projectRoot,
+} = {}) {
+  const resolvedProjectRoot = resolveProjectRoot(projectRoot);
+  const { schemaPath, server } = createHttpServer({
+    projectRoot: resolvedProjectRoot,
   });
+
+  await ensureDatabaseSchema(schemaPath);
+
+  await new Promise((resolve, reject) => {
+    const handleError = (error) => {
+      server.off("listening", handleListening);
+      reject(error);
+    };
+    const handleListening = () => {
+      server.off("error", handleError);
+      resolve();
+    };
+
+    server.once("error", handleError);
+    server.once("listening", handleListening);
+    server.listen(port, host);
+  });
+
+  const address = server.address();
+  const actualPort =
+    typeof address === "object" && address ? address.port : Number(port);
+  const listenHost = host === "0.0.0.0" ? "127.0.0.1" : host;
+
+  return {
+    host: listenHost,
+    port: actualPort,
+    server,
+    url: `http://${listenHost}:${actualPort}`,
+    async close() {
+      await new Promise((resolve, reject) => {
+        server.close((error) => {
+          if (error) {
+            reject(error);
+            return;
+          }
+
+          resolve();
+        });
+      });
+
+      await closePostgresConnection();
+    },
+  };
+}
+
+async function startStandaloneServer() {
+  try {
+    const serverHandle = await startServer();
+    console.log("Schema do banco garantido com sucesso.");
+    console.log(`API online em ${serverHandle.url}`);
+
+    for (const signal of ["SIGINT", "SIGTERM"]) {
+      process.on(signal, async () => {
+        await serverHandle.close();
+        process.exit(0);
+      });
+    }
+  } catch (error) {
+    console.error("Falha ao inicializar banco de dados:", error.message);
+    process.exit(1);
+  }
+}
+
+const entryFile = process.argv[1]
+  ? pathToFileURL(path.resolve(process.argv[1])).href
+  : null;
+
+if (entryFile === import.meta.url) {
+  await startStandaloneServer();
 }

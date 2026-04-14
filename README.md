@@ -10,6 +10,7 @@ Painel web para controle de operacoes, com frontend em `Vite + React`, backend e
 - Tailwind CSS
 - Node.js
 - PostgreSQL
+- Electron
 
 ## Rodando localmente
 
@@ -37,6 +38,21 @@ PGPASSWORD=sua_senha
 PGSSL=false
 ```
 
+Configuracao minima obrigatoria hoje:
+
+- `PGHOST`
+- `PGPORT`
+- `PGDATABASE`
+- `PGUSER`
+- `PGPASSWORD`
+- `PGSSL=false`
+
+No modo desktop empacotado, essas mesmas variaveis ficam em:
+
+```text
+%APPDATA%\Logistica CATRAIA\database.env
+```
+
 ### Aplicar o schema
 
 Depois de configurar as variaveis do banco:
@@ -57,6 +73,15 @@ npm run dev:client
 npm run dev:server
 ```
 
+### Rodar como software desktop no PC
+
+```bash
+npm run dev:desktop
+```
+
+Esse comando sobe o frontend em modo desenvolvimento e abre o aplicativo
+Electron consumindo a mesma API Node + PostgreSQL.
+
 Frontend local: `http://localhost:5173`
 
 API local: `http://localhost:3001/api/health`
@@ -67,32 +92,41 @@ API local: `http://localhost:3001/api/health`
 npm run build
 ```
 
-## Deploy no Render
+## Build desktop para Windows
 
-O projeto ja esta preparado para subir como **um unico Web Service**:
+### Executavel portatil
 
-- build: `npm install && npm run build`
-- start: `npm start`
+```bash
+npm run pack:portable
+```
 
-O backend serve a API e tambem os arquivos do `dist`, entao nao precisa criar um Static Site separado.
+Gera o arquivo:
 
-### Variaveis de ambiente no Render
+- `release/Logistica CATRAIA 0.0.1.exe`
 
-Configure estas variaveis no servico:
+### Instalador Windows
 
-- `PGHOST`
-- `PGPORT`
-- `PGDATABASE`
-- `PGUSER`
-- `PGPASSWORD`
-- `PGSSL=true`
+```bash
+npm run pack:desktop
+```
 
-Se quiser usar configuracao por arquivo, o projeto tambem inclui [render.yaml](render.yaml).
+Gera os arquivos:
 
-Observacao:
+- `release/Logistica CATRAIA Setup 0.0.1.exe`
+- `release/Logistica CATRAIA Setup 0.0.1.exe.blockmap`
 
-- Se o hostname do banco terminar com algo como `-a`, ele costuma ser o hostname interno da Render e funciona para o app publicado dentro da propria Render.
-- Esse tipo de hostname normalmente nao resolve no seu computador local.
+### Configuracao do banco no desktop
+
+No modo desenvolvimento o app usa o arquivo `.env` da raiz do projeto.
+
+Quando empacotado como software Windows, o Electron cria um arquivo de
+configuracao do banco em:
+
+```text
+%APPDATA%\Logistica CATRAIA\database.env
+```
+
+Use esse arquivo como base para apontar o PostgreSQL da empresa.
 
 ## Estrutura principal
 
@@ -106,3 +140,24 @@ server/
     postgres.js
   index.js
 ```
+
+## Configuracao mais leve para agora
+
+Para manter o app leve neste momento, use este caminho:
+
+- PostgreSQL local ou em um unico servidor da empresa
+- app desktop via Electron
+- sem hospedagem web externa
+- sem SSL no banco local: `PGSSL=false`
+- uma unica API local embutida no desktop em producao
+
+O que e realmente necessario para rodar:
+
+- Node.js LTS apenas para desenvolvimento e empacotamento
+- PostgreSQL
+- arquivo `.env` no projeto ou `database.env` no desktop empacotado
+
+O que nao e necessario agora:
+
+- variaveis de deploy web
+- servidor publico

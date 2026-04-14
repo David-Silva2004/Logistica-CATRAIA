@@ -15,6 +15,7 @@ interface TopBarProps {
   activeView: string;
   onViewChange: (view: string) => void;
   currentUserName: string;
+  currentUserRole: "admin" | "normal";
   onLogout: () => void;
 }
 
@@ -24,6 +25,7 @@ export function TopBar({
   activeView,
   onViewChange,
   currentUserName,
+  currentUserRole,
   onLogout,
 }: TopBarProps) {
   const menuItems = [
@@ -97,7 +99,9 @@ export function TopBar({
                 <p className="text-xs font-bold text-slate-900">
                   {currentUserName}
                 </p>
-                <p className="text-xs text-slate-500 -mt-0.5">Acesso local</p>
+                <p className="text-xs text-slate-500 -mt-0.5">
+                  {currentUserRole === "admin" ? "Administrador" : "Usuario"}
+                </p>
               </div>
 
               <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-amber-200 bg-amber-50">

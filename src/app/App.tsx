@@ -6,12 +6,18 @@ import { LoadingState } from "./components/LoadingState";
 import { LoginScreen } from "./components/LoginScreen";
 import {
   OperationModal,
+  type OperationModalMode,
   type OperationFormState,
 } from "./components/OperationModal";
 import { OperationTable } from "./components/OperationTable";
 import { SetupPanel } from "./components/SetupPanel";
 import { TopBar } from "./components/TopBar";
-import type { BootstrapPayload, OperationRecord, SelectOption } from "./types";
+import type {
+  AuthSession,
+  BootstrapPayload,
+  OperationRecord,
+  SelectOption,
+} from "./types";
 
 interface AppOptionsState {
   operators: SelectOption[];
@@ -21,12 +27,8 @@ interface AppOptionsState {
   types: SelectOption[];
 }
 
-interface LocalSession {
-  name: string;
-  email: string;
-}
-
-const SESSION_STORAGE_KEY = "logistica-catraia.local-session";
+const PERSISTENT_SESSION_STORAGE_KEY = "logistica-catraia.local-session";
+const TEMPORARY_SESSION_STORAGE_KEY = "logistica-catraia.temp-session";
 
 const emptyOptions: AppOptionsState = {
   operators: [],
@@ -35,6 +37,16 @@ const emptyOptions: AppOptionsState = {
   users: [],
   types: [],
 };
+
+const AUTO_REFRESH_INTERVAL_MS = 15_000;
+
+function getTodayLocalDate() {
+  const currentDate = new Date();
+  const timezoneOffset = currentDate.getTimezoneOffset();
+  const localDate = new Date(currentDate.getTime() - timezoneOffset * 60_000);
+
+  return localDate.toISOString().split("T")[0];
+}
 
 function buildCsvValue(value: string | number | null) {
   if (value === null || value === undefined) {
@@ -47,28 +59,64 @@ function buildCsvValue(value: string | number | null) {
 
 function readStoredSession() {
   try {
-    const rawValue = window.localStorage.getItem(SESSION_STORAGE_KEY);
-    return rawValue ? (JSON.parse(rawValue) as LocalSession) : null;
+    const persistentValue = window.localStorage.getItem(
+      PERSISTENT_SESSION_STORAGE_KEY,
+    );
+    const temporaryValue = window.sessionStorage.getItem(
+      TEMPORARY_SESSION_STORAGE_KEY,
+    );
+    const rawValue = persistentValue || temporaryValue;
+
+    if (!rawValue) {
+      return null;
+    }
+
+    const parsedSession = JSON.parse(rawValue) as Partial<AuthSession>;
+
+    if (
+      typeof parsedSession.id !== "number" ||
+      typeof parsedSession.name !== "string" ||
+      typeof parsedSession.login !== "string"
+    ) {
+      return null;
+    }
+
+    return {
+      id: parsedSession.id,
+      name: parsedSession.name,
+      login: parsedSession.login,
+      email:
+        typeof parsedSession.email === "string" ? parsedSession.email : null,
+      role: parsedSession.role === "normal" ? "normal" : "admin",
+    };
   } catch {
     return null;
   }
 }
 
+function buildSessionHeaders(session: AuthSession, headers?: HeadersInit) {
+  return {
+    ...(headers || {}),
+    "x-user-id": String(session.id),
+  };
+}
+
 export default function App() {
   const [activeView, setActiveView] = useState("operations");
-  const [selectedDate, setSelectedDate] = useState(() => {
-    const today = new Date();
-    return today.toISOString().split("T")[0];
-  });
-  const [session, setSession] = useState<LocalSession | null>(() =>
+  const [selectedDate, setSelectedDate] = useState(() => getTodayLocalDate());
+  const [session, setSession] = useState<AuthSession | null>(() =>
     typeof window === "undefined" ? null : readStoredSession(),
   );
   const [operations, setOperations] = useState<OperationRecord[]>([]);
   const [options, setOptions] = useState<AppOptionsState>(emptyOptions);
   const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
+  const [errorMessage, setErrorMessage] = useState("");
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
   const [reloadToken, setReloadToken] = useState(0);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [operationModalMode, setOperationModalMode] =
+    useState<OperationModalMode>("create");
   const [editingOperation, setEditingOperation] = useState<OperationRecord | null>(
     null,
   );
@@ -80,15 +128,28 @@ export default function App() {
 
     let ignore = false;
 
-    async function loadData() {
-      setIsLoading(true);
-      setHasError(false);
+    async function loadData({ silent = false } = {}) {
+      const shouldShowBlockingLoading = !silent && !hasLoadedOnce;
+
+      if (shouldShowBlockingLoading) {
+        setIsLoading(true);
+      }
+
+      if (!silent) {
+        setHasError(false);
+        setErrorMessage("");
+      }
 
       try {
-        const response = await fetch(`/api/bootstrap?date=${selectedDate}`);
+        const response = await fetch(`/api/bootstrap?date=${selectedDate}`, {
+          headers: buildSessionHeaders(session),
+        });
 
         if (!response.ok) {
-          throw new Error("Falha ao carregar a API.");
+          const errorPayload = await response.json().catch(() => null);
+          throw new Error(
+            errorPayload?.error || "Falha ao carregar a API.",
+          );
         }
 
         const payload: BootstrapPayload = await response.json();
@@ -96,40 +157,79 @@ export default function App() {
         if (!ignore) {
           setOperations(payload.operations);
           setOptions(payload.options);
+          setHasLoadedOnce(true);
+          setHasError(false);
+          setErrorMessage("");
         }
-      } catch {
+      } catch (error) {
         if (!ignore) {
-          setHasError(true);
+          const nextErrorMessage =
+            error instanceof Error
+              ? error.message
+              : "Nao foi possivel carregar os dados do sistema.";
+
+          if (
+            nextErrorMessage.includes("Sessao invalida") ||
+            nextErrorMessage.includes("Entre novamente")
+          ) {
+            setSession(null);
+            window.localStorage.removeItem(PERSISTENT_SESSION_STORAGE_KEY);
+            window.sessionStorage.removeItem(TEMPORARY_SESSION_STORAGE_KEY);
+            return;
+          }
+
+          if (!silent || !hasLoadedOnce) {
+            setHasError(true);
+            setErrorMessage(nextErrorMessage);
+          }
         }
       } finally {
-        if (!ignore) {
+        if (!ignore && shouldShowBlockingLoading) {
           setIsLoading(false);
         }
       }
     }
 
-    loadData();
+    void loadData();
+
+    const intervalId = window.setInterval(() => {
+      void loadData({ silent: true });
+    }, AUTO_REFRESH_INTERVAL_MS);
 
     return () => {
       ignore = true;
+      window.clearInterval(intervalId);
     };
-  }, [reloadToken, selectedDate, session]);
+  }, [hasLoadedOnce, reloadToken, selectedDate, session]);
 
   const handleRefresh = () => {
     setReloadToken((current) => current + 1);
   };
 
-  const handleLogin = (nextSession: LocalSession) => {
+  const handleLogin = (
+    nextSession: AuthSession,
+    options?: { rememberUser?: boolean },
+  ) => {
+    const shouldRememberUser = options?.rememberUser ?? true;
+
     setSession(nextSession);
-    window.localStorage.setItem(
-      SESSION_STORAGE_KEY,
-      JSON.stringify(nextSession),
-    );
+    window.localStorage.removeItem(PERSISTENT_SESSION_STORAGE_KEY);
+    window.sessionStorage.removeItem(TEMPORARY_SESSION_STORAGE_KEY);
+
+    const storage = shouldRememberUser
+      ? window.localStorage
+      : window.sessionStorage;
+    const storageKey = shouldRememberUser
+      ? PERSISTENT_SESSION_STORAGE_KEY
+      : TEMPORARY_SESSION_STORAGE_KEY;
+
+    storage.setItem(storageKey, JSON.stringify(nextSession));
   };
 
   const handleLogout = () => {
     setSession(null);
-    window.localStorage.removeItem(SESSION_STORAGE_KEY);
+    window.localStorage.removeItem(PERSISTENT_SESSION_STORAGE_KEY);
+    window.sessionStorage.removeItem(TEMPORARY_SESSION_STORAGE_KEY);
   };
 
   const missingItems = [
@@ -139,13 +239,57 @@ export default function App() {
   ].filter(Boolean) as string[];
 
   const handleAddOperation = () => {
+    setOperationModalMode("create");
     setEditingOperation(null);
     setIsModalOpen(true);
   };
 
   const handleEditOperation = (operation: OperationRecord) => {
+    setOperationModalMode("edit");
     setEditingOperation(operation);
     setIsModalOpen(true);
+  };
+
+  const handleCloseOperation = (operation: OperationRecord) => {
+    setOperationModalMode("close");
+    setEditingOperation(operation);
+    setIsModalOpen(true);
+  };
+
+  const handleDeleteOperation = async (operation: OperationRecord) => {
+    try {
+      if (session.role !== "admin") {
+        throw new Error("Somente administradores podem excluir operacoes.");
+      }
+
+      const confirmed = window.confirm(
+        `Excluir a operacao OP${String(operation.id).padStart(4, "0")} da lancha ${operation.lanchaName}?`,
+      );
+
+      if (!confirmed) {
+        return;
+      }
+
+      const response = await fetch(`/api/operations/${operation.id}`, {
+        method: "DELETE",
+        headers: buildSessionHeaders(session),
+      });
+
+      if (!response.ok) {
+        const errorPayload = await response.json().catch(() => null);
+        throw new Error(
+          errorPayload?.error || "Nao foi possivel excluir a operacao.",
+        );
+      }
+
+      handleRefresh();
+    } catch (error) {
+      window.alert(
+        error instanceof Error
+          ? error.message
+          : "Nao foi possivel excluir a operacao.",
+      );
+    }
   };
 
   const handleSaveOperation = async (formData: OperationFormState) => {
@@ -153,7 +297,7 @@ export default function App() {
       operatorId: formData.operatorId,
       lanchaId: formData.lanchaId,
       statusId: formData.statusId,
-      userId: formData.userId,
+      userId: session.id,
       startedAt: formData.startedAt,
       finishedAt: formData.finishedAt || null,
       notes: formData.notes,
@@ -167,6 +311,7 @@ export default function App() {
         method: editingOperation ? "PUT" : "POST",
         headers: {
           "Content-Type": "application/json",
+          ...buildSessionHeaders(session),
         },
         body: JSON.stringify(payload),
       },
@@ -178,6 +323,7 @@ export default function App() {
     }
 
     setIsModalOpen(false);
+    setOperationModalMode("create");
     setEditingOperation(null);
     handleRefresh();
   };
@@ -231,8 +377,8 @@ export default function App() {
   const setupSection = (
     <SetupPanel
       operators={options.operators}
-      lanchas={options.lanchas}
-      types={options.types}
+      users={options.users}
+      session={session}
       onRefresh={handleRefresh}
     />
   );
@@ -243,7 +389,7 @@ export default function App() {
     }
 
     if (hasError) {
-      return <ErrorState onRetry={handleRefresh} />;
+      return <ErrorState onRetry={handleRefresh} message={errorMessage} />;
     }
 
     if (activeView === "dashboard") {
@@ -312,8 +458,9 @@ export default function App() {
               Login e conexao
             </h3>
             <p className="text-slate-600">
-              A tela de login atual esta em modo provisório e a conexao com o
-              banco continua no backend local em <code>server/database/postgres.js</code>.
+              O login agora usa usuarios reais do PostgreSQL, com sessao local
+              no desktop e configuracao centralizada em{" "}
+              <code>server/database/postgres.js</code>.
             </p>
           </div>
         </div>
@@ -334,8 +481,13 @@ export default function App() {
         <DashboardCards {...stats} />
         <OperationTable
           data={operations}
+          lanchas={options.lanchas}
+          operators={options.operators}
+          canDelete={session.role === "admin"}
           onAdd={handleAddOperation}
+          onCloseOperation={handleCloseOperation}
           onEdit={handleEditOperation}
+          onDelete={handleDeleteOperation}
           onExport={handleExport}
         />
       </div>
@@ -354,6 +506,7 @@ export default function App() {
         activeView={activeView}
         onViewChange={setActiveView}
         currentUserName={session.name}
+        currentUserRole={session.role}
         onLogout={handleLogout}
       />
 
@@ -365,14 +518,16 @@ export default function App() {
         isOpen={isModalOpen}
         onClose={() => {
           setIsModalOpen(false);
+          setOperationModalMode("create");
           setEditingOperation(null);
         }}
         onSave={handleSaveOperation}
+        mode={operationModalMode}
         operation={editingOperation}
+        operations={operations}
         operators={options.operators}
         lanchas={options.lanchas}
         statuses={options.statuses}
-        users={options.users}
       />
     </div>
   );

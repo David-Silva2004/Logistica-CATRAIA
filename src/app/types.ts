@@ -2,6 +2,21 @@ export interface SelectOption {
   id: number;
   label: string;
   hint?: string;
+  role?: UserRole;
+}
+
+export type UserRole = "admin" | "normal";
+
+export interface AuthSession {
+  id: number;
+  name: string;
+  login: string;
+  email: string | null;
+  role: UserRole;
+}
+
+export interface AuthStatusPayload {
+  hasUsers: boolean;
 }
 
 export interface OperationRecord {

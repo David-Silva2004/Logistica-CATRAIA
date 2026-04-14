@@ -2,14 +2,20 @@
   "name": "@figma/my-make-file",
   "private": true,
   "version": "0.0.1",
+  "main": "electron/main.cjs",
   "type": "module",
   "scripts": {
     "build": "vite build",
     "db:apply-schema": "node server/scripts/apply-schema.js",
+    "desktop": "npm run build && node electron/launch.cjs .",
+    "dev:desktop": "concurrently -k \"npm:dev:client\" \"npm:dev:electron\"",
+    "dev:electron": "wait-on tcp:5173 && node electron/launch.cjs .",
     "start": "node server/index.js",
     "dev": "vite",
     "dev:client": "vite",
-    "dev:server": "node server/index.js"
+    "dev:server": "node server/index.js",
+    "pack:desktop": "npm run build && electron-builder --win nsis",
+    "pack:portable": "npm run build && electron-builder --win portable"
   },
   "dependencies": {
     "@emotion/react": "11.14.0",
@@ -72,8 +78,12 @@
   "devDependencies": {
     "@tailwindcss/vite": "4.1.12",
     "@vitejs/plugin-react": "4.7.0",
+    "concurrently": "^9.2.1",
+    "electron": "^41.2.0",
+    "electron-builder": "^26.8.1",
     "tailwindcss": "4.1.12",
-    "vite": "6.3.5"
+    "vite": "6.3.5",
+    "wait-on": "^9.0.5"
   },
   "peerDependencies": {
     "react": "18.3.1",
@@ -90,6 +100,27 @@
   "pnpm": {
     "overrides": {
       "vite": "6.3.5"
+    }
+  },
+  "build": {
+    "appId": "com.logisticacatraia.desktop",
+    "productName": "Logistica CATRAIA",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "server/**/*",
+      "package.json",
+      ".env.example"
+    ],
+    "win": {
+      "signAndEditExecutable": false,
+      "target": [
+        "nsis",
+        "portable"
+      ]
     }
   }
 }

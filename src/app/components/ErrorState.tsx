@@ -2,9 +2,10 @@ import { AlertCircle, RefreshCw } from "lucide-react";
 
 interface ErrorStateProps {
   onRetry: () => void;
+  message?: string;
 }
 
-export function ErrorState({ onRetry }: ErrorStateProps) {
+export function ErrorState({ onRetry, message }: ErrorStateProps) {
   return (
     <div className="bg-white rounded-2xl shadow-xl border-2 border-red-200 p-12 text-center">
       <div className="max-w-md mx-auto">
@@ -17,8 +18,8 @@ export function ErrorState({ onRetry }: ErrorStateProps) {
         </h3>
 
         <p className="text-slate-600 mb-6">
-          Nao foi possivel carregar as informacoes do banco. Verifique a API e
-          a conexao com o PostgreSQL.
+          {message ||
+            "Nao foi possivel carregar as informacoes do banco. Verifique a API e a conexao com o PostgreSQL."}
         </p>
 
         <button

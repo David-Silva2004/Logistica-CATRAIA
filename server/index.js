@@ -25,6 +25,9 @@ const contentTypes = {
 const PASSWORD_HASH_PREFIX = "scrypt";
 const USER_ROLE_ADMIN = "admin";
 const USER_ROLE_NORMAL = "normal";
+const REPORT_PERIOD_DAY = "day";
+const REPORT_PERIOD_WEEK = "week";
+const REPORT_PERIOD_MONTH = "month";
 const OPERATION_STATUS_RULES_BY_TYPE = {
   // Preencha aqui quando definirmos a matriz exata de status por tipo de lancha.
 };
@@ -196,9 +199,77 @@ function normalizeOperation(row) {
     statusName: row.status_nome,
     userId: row.id_usuario,
     userName: row.nome_usuario,
+    crewMemberName: row.nome_marinheiro || null,
     startedAt: row.inicio_operacao,
     finishedAt: row.fim_operacao,
     notes: row.observacao || "",
+  };
+}
+
+function parseIsoDateOnly(value, fieldName = "date") {
+  const normalized = typeof value === "string" ? value.trim() : "";
+
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(normalized)) {
+    throw createHttpError(400, `Informe um ${fieldName} valido no formato YYYY-MM-DD.`);
+  }
+
+  const [year, month, day] = normalized.split("-").map(Number);
+  const parsedDate = new Date(Date.UTC(year, month - 1, day));
+
+  if (
+    Number.isNaN(parsedDate.getTime()) ||
+    parsedDate.getUTCFullYear() !== year ||
+    parsedDate.getUTCMonth() !== month - 1 ||
+    parsedDate.getUTCDate() !== day
+  ) {
+    throw createHttpError(400, `Informe um ${fieldName} valido no formato YYYY-MM-DD.`);
+  }
+
+  return parsedDate;
+}
+
+function formatDateOnly(date) {
+  return date.toISOString().slice(0, 10);
+}
+
+function getConsolidatedDateRange({ date, period }) {
+  const normalizedPeriod = String(period || REPORT_PERIOD_DAY)
+    .trim()
+    .toLowerCase();
+
+  if (
+    ![REPORT_PERIOD_DAY, REPORT_PERIOD_WEEK, REPORT_PERIOD_MONTH].includes(
+      normalizedPeriod,
+    )
+  ) {
+    throw createHttpError(400, "Periodo invalido. Use day, week ou month.");
+  }
+
+  const referenceDate = parseIsoDateOnly(date, "date");
+  let rangeStart = new Date(referenceDate);
+  let rangeEnd = new Date(referenceDate);
+
+  if (normalizedPeriod === REPORT_PERIOD_WEEK) {
+    const dayOfWeek = referenceDate.getUTCDay();
+    const mondayOffset = (dayOfWeek + 6) % 7;
+    rangeStart.setUTCDate(referenceDate.getUTCDate() - mondayOffset);
+    rangeEnd = new Date(rangeStart);
+    rangeEnd.setUTCDate(rangeStart.getUTCDate() + 6);
+  }
+
+  if (normalizedPeriod === REPORT_PERIOD_MONTH) {
+    rangeStart = new Date(
+      Date.UTC(referenceDate.getUTCFullYear(), referenceDate.getUTCMonth(), 1),
+    );
+    rangeEnd = new Date(
+      Date.UTC(referenceDate.getUTCFullYear(), referenceDate.getUTCMonth() + 1, 0),
+    );
+  }
+
+  return {
+    period: normalizedPeriod,
+    startDate: formatDateOnly(rangeStart),
+    endDate: formatDateOnly(rangeEnd),
   };
 }
 
@@ -265,6 +336,7 @@ async function getOperations(selectedDate) {
         o.id_operador,
         o.id_status,
         o.id_usuario,
+        o.nome_marinheiro,
         o.inicio_operacao,
         o.fim_operacao,
         o.observacao,
@@ -283,6 +355,39 @@ async function getOperations(selectedDate) {
       ORDER BY o.inicio_operacao DESC, o.id_operacao DESC
     `,
     params,
+  );
+
+  return result.rows.map(normalizeOperation);
+}
+
+async function getOperationsByDateRange(startDate, endDate) {
+  const result = await postgresPool.query(
+    `
+      SELECT
+        o.id_operacao,
+        o.id_lancha,
+        o.id_operador,
+        o.id_status,
+        o.id_usuario,
+        o.nome_marinheiro,
+        o.inicio_operacao,
+        o.fim_operacao,
+        o.observacao,
+        op.nome_operador,
+        l.nome_lancha,
+        t.tipo_lancha,
+        s.status AS status_nome,
+        u.nome_usuario
+      FROM operacoes o
+      INNER JOIN operadores op ON op.id_operador = o.id_operador
+      INNER JOIN lanchas l ON l.id_lancha = o.id_lancha
+      INNER JOIN tipo t ON t.id_tipo = l.id_tipo
+      INNER JOIN status s ON s.id_status = o.id_status
+      LEFT JOIN usuarios u ON u.id_usuario = o.id_usuario
+      WHERE o.inicio_operacao::date BETWEEN $1::date AND $2::date
+      ORDER BY o.inicio_operacao DESC, o.id_operacao DESC
+    `,
+    [startDate, endDate],
   );
 
   return result.rows.map(normalizeOperation);
@@ -343,6 +448,42 @@ async function ensureLanchaHasNoTimeConflict({
     throw createHttpError(
       400,
       `A lancha ${result.rows[0].nome_lancha} ja possui uma operacao no periodo informado.`,
+    );
+  }
+}
+
+async function ensureNoDuplicateOpenLanchaStatus({
+  lanchaId,
+  statusId,
+  finishedAt,
+  ignoreOperationId = null,
+}) {
+  if (finishedAt) {
+    return;
+  }
+
+  const result = await postgresPool.query(
+    `
+      SELECT
+        o.id_operacao,
+        l.nome_lancha,
+        s.status
+      FROM operacoes o
+      INNER JOIN lanchas l ON l.id_lancha = o.id_lancha
+      INNER JOIN status s ON s.id_status = o.id_status
+      WHERE o.id_lancha = $1
+        AND o.id_status = $2
+        AND ($3::int IS NULL OR o.id_operacao <> $3::int)
+        AND o.fim_operacao IS NULL
+      LIMIT 1
+    `,
+    [Number(lanchaId), Number(statusId), ignoreOperationId],
+  );
+
+  if (result.rows[0]) {
+    throw createHttpError(
+      400,
+      `A lancha ${result.rows[0].nome_lancha} ja possui uma operacao aberta com status ${result.rows[0].status}.`,
     );
   }
 }
@@ -421,6 +562,54 @@ async function ensureValidStatusTypeCombination({ lanchaId, statusId }) {
   }
 }
 
+function shouldRequireCrewMember({ typeName, statusName }) {
+  const normalizedType = normalizeBusinessLabel(typeName);
+  const normalizedStatus = normalizeBusinessLabel(statusName);
+  const isLargeLancha = normalizedType.includes("catamara");
+  const isBarra = normalizedStatus.includes("barra");
+  const isPasseio = normalizedStatus.includes("passeio");
+
+  return isBarra || (isPasseio && isLargeLancha);
+}
+
+async function ensureCrewMemberRequirement({ lanchaId, statusId, crewMemberName }) {
+  const result = await postgresPool.query(
+    `
+      SELECT
+        t.tipo_lancha,
+        s.status
+      FROM lanchas l
+      INNER JOIN tipo t ON t.id_tipo = l.id_tipo
+      INNER JOIN status s ON s.id_status = $2
+      WHERE l.id_lancha = $1
+      LIMIT 1
+    `,
+    [Number(lanchaId), Number(statusId)],
+  );
+
+  const row = result.rows[0];
+
+  if (!row) {
+    throw createHttpError(
+      400,
+      "Nao foi possivel validar a lancha e o status informados.",
+    );
+  }
+
+  if (
+    shouldRequireCrewMember({
+      typeName: row.tipo_lancha,
+      statusName: row.status,
+    }) &&
+    !String(crewMemberName || "").trim()
+  ) {
+    throw createHttpError(
+      400,
+      "Informe o marinheiro acompanhante para operacoes de Barra e Passeio com lancha grande.",
+    );
+  }
+}
+
 async function validateOperationBusinessRules(payload, { operationId = null } = {}) {
   const { startedAt, finishedAt } = normalizeOperationDateRange(payload);
 
@@ -437,9 +626,22 @@ async function validateOperationBusinessRules(payload, { operationId = null } = 
     ignoreOperationId: operationId,
   });
 
+  await ensureNoDuplicateOpenLanchaStatus({
+    lanchaId: payload.lanchaId,
+    statusId: payload.statusId,
+    finishedAt,
+    ignoreOperationId: operationId,
+  });
+
   await ensureValidStatusTypeCombination({
     lanchaId: payload.lanchaId,
     statusId: payload.statusId,
+  });
+
+  await ensureCrewMemberRequirement({
+    lanchaId: payload.lanchaId,
+    statusId: payload.statusId,
+    crewMemberName: payload.crewMemberName,
   });
 
   return {
@@ -449,7 +651,7 @@ async function validateOperationBusinessRules(payload, { operationId = null } = 
 }
 
 async function createOperation(payload) {
-  const { operatorId, lanchaId, statusId, userId, notes } = payload;
+  const { operatorId, lanchaId, statusId, userId, notes, crewMemberName } = payload;
   const { startedAt, finishedAt } = await validateOperationBusinessRules(payload);
 
   const result = await postgresPool.query(
@@ -459,11 +661,12 @@ async function createOperation(payload) {
         id_operador,
         id_status,
         id_usuario,
+        nome_marinheiro,
         inicio_operacao,
         fim_operacao,
         observacao
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
       RETURNING id_operacao
     `,
     [
@@ -471,6 +674,7 @@ async function createOperation(payload) {
       Number(operatorId),
       Number(statusId),
       userId ? Number(userId) : null,
+      crewMemberName?.trim() || null,
       startedAt,
       finishedAt || null,
       notes?.trim() || null,
@@ -481,7 +685,7 @@ async function createOperation(payload) {
 }
 
 async function updateOperation(operationId, payload) {
-  const { operatorId, lanchaId, statusId, userId, notes } = payload;
+  const { operatorId, lanchaId, statusId, userId, notes, crewMemberName } = payload;
   const { startedAt, finishedAt } = await validateOperationBusinessRules(
     payload,
     { operationId: Number(operationId) },
@@ -495,10 +699,11 @@ async function updateOperation(operationId, payload) {
         id_operador = $2,
         id_status = $3,
         id_usuario = $4,
-        inicio_operacao = $5,
-        fim_operacao = $6,
-        observacao = $7
-      WHERE id_operacao = $8
+        nome_marinheiro = $5,
+        inicio_operacao = $6,
+        fim_operacao = $7,
+        observacao = $8
+      WHERE id_operacao = $9
       RETURNING id_operacao
     `,
     [
@@ -506,6 +711,7 @@ async function updateOperation(operationId, payload) {
       Number(operatorId),
       Number(statusId),
       userId ? Number(userId) : null,
+      crewMemberName?.trim() || null,
       startedAt,
       finishedAt || null,
       notes?.trim() || null,
@@ -1016,6 +1222,37 @@ function createHttpServer({ projectRoot }) {
         ]);
 
         sendJson(response, 200, { options, operations });
+        return;
+      }
+
+      if (
+        request.method === "GET" &&
+        requestUrl.pathname === "/api/reports/consolidated"
+      ) {
+        await getAuthenticatedUserFromRequest(request);
+
+        const selectedDate = requestUrl.searchParams.get("date");
+        const period = requestUrl.searchParams.get("period") || REPORT_PERIOD_DAY;
+
+        if (!selectedDate) {
+          throw createHttpError(400, "Informe a data de referencia para o relatorio.");
+        }
+
+        const range = getConsolidatedDateRange({
+          date: selectedDate,
+          period,
+        });
+        const operations = await getOperationsByDateRange(
+          range.startDate,
+          range.endDate,
+        );
+
+        sendJson(response, 200, {
+          period: range.period,
+          startDate: range.startDate,
+          endDate: range.endDate,
+          operations,
+        });
         return;
       }
 

@@ -1,9 +1,14 @@
 import { useEffect, useState } from "react";
 import { DashboardCards } from "./components/DashboardCards";
+import { DailyOperationsReport } from "./components/DailyOperationsReport";
 import { EmptyState } from "./components/EmptyState";
 import { ErrorState } from "./components/ErrorState";
+import { LanchaUsageReport } from "./components/LanchaUsageReport";
 import { LoadingState } from "./components/LoadingState";
 import { LoginScreen } from "./components/LoginScreen";
+import { OpenOperationsReport } from "./components/OpenOperationsReport";
+import { OperatorProductivityReport } from "./components/OperatorProductivityReport";
+import { PeriodConsolidatedReport } from "./components/PeriodConsolidatedReport";
 import {
   OperationModal,
   type OperationModalMode,
@@ -27,6 +32,13 @@ interface AppOptionsState {
   types: SelectOption[];
 }
 
+interface OperationFiltersState {
+  searchTerm: string;
+  statusFilter: string;
+  lanchaFilter: string;
+  operatorFilter: string;
+}
+
 const PERSISTENT_SESSION_STORAGE_KEY = "logistica-catraia.local-session";
 const TEMPORARY_SESSION_STORAGE_KEY = "logistica-catraia.temp-session";
 
@@ -36,6 +48,13 @@ const emptyOptions: AppOptionsState = {
   statuses: [],
   users: [],
   types: [],
+};
+
+const initialOperationFilters: OperationFiltersState = {
+  searchTerm: "",
+  statusFilter: "all",
+  lanchaFilter: "all",
+  operatorFilter: "all",
 };
 
 const AUTO_REFRESH_INTERVAL_MS = 15_000;
@@ -115,6 +134,9 @@ export default function App() {
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
   const [reloadToken, setReloadToken] = useState(0);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [operationFilters, setOperationFilters] = useState<OperationFiltersState>(
+    initialOperationFilters,
+  );
   const [operationModalMode, setOperationModalMode] =
     useState<OperationModalMode>("create");
   const [editingOperation, setEditingOperation] = useState<OperationRecord | null>(
@@ -129,6 +151,10 @@ export default function App() {
     let ignore = false;
 
     async function loadData({ silent = false } = {}) {
+      if (silent && isModalOpen) {
+        return;
+      }
+
       const shouldShowBlockingLoading = !silent && !hasLoadedOnce;
 
       if (shouldShowBlockingLoading) {
@@ -200,7 +226,7 @@ export default function App() {
       ignore = true;
       window.clearInterval(intervalId);
     };
-  }, [hasLoadedOnce, reloadToken, selectedDate, session]);
+  }, [hasLoadedOnce, isModalOpen, reloadToken, selectedDate, session]);
 
   const handleRefresh = () => {
     setReloadToken((current) => current + 1);
@@ -298,6 +324,7 @@ export default function App() {
       lanchaId: formData.lanchaId,
       statusId: formData.statusId,
       userId: session.id,
+      crewMemberName: formData.crewMemberName || null,
       startedAt: formData.startedAt,
       finishedAt: formData.finishedAt || null,
       notes: formData.notes,
@@ -335,9 +362,9 @@ export default function App() {
       "Lancha",
       "Tipo",
       "Status",
+      "Marinheiro",
       "Inicio",
       "Fim",
-      "Usuario",
       "Observacao",
     ];
 
@@ -350,9 +377,9 @@ export default function App() {
           buildCsvValue(operation.lanchaName),
           buildCsvValue(operation.typeName),
           buildCsvValue(operation.statusName),
+          buildCsvValue(operation.crewMemberName),
           buildCsvValue(operation.startedAt),
           buildCsvValue(operation.finishedAt),
-          buildCsvValue(operation.userName),
           buildCsvValue(operation.notes),
         ].join(","),
       ),
@@ -437,14 +464,31 @@ export default function App() {
 
     if (activeView === "reports") {
       return (
-        <div className="rounded-[2rem] border border-black/5 bg-white p-8 text-center shadow-xl">
-          <h3 className="mb-2 text-xl font-black text-slate-900">
-            Modulo de relatorios
-          </h3>
-          <p className="text-slate-600">
-            Use a tabela principal para exportar o CSV das operacoes filtradas
-            por data.
-          </p>
+        <div className="space-y-6">
+          <PeriodConsolidatedReport
+            selectedDate={selectedDate}
+            session={session}
+          />
+          <DailyOperationsReport
+            data={operations}
+            selectedDate={selectedDate}
+            lanchas={options.lanchas}
+            operators={options.operators}
+          />
+          <OpenOperationsReport
+            data={operations}
+            selectedDate={selectedDate}
+            lanchas={options.lanchas}
+            operators={options.operators}
+          />
+          <OperatorProductivityReport
+            data={operations}
+            selectedDate={selectedDate}
+          />
+          <LanchaUsageReport
+            data={operations}
+            selectedDate={selectedDate}
+          />
         </div>
       );
     }
@@ -477,20 +521,45 @@ export default function App() {
     }
 
     return (
-      <div className="space-y-6">
-        <DashboardCards {...stats} />
-        <OperationTable
-          data={operations}
-          lanchas={options.lanchas}
-          operators={options.operators}
-          canDelete={session.role === "admin"}
-          onAdd={handleAddOperation}
-          onCloseOperation={handleCloseOperation}
-          onEdit={handleEditOperation}
-          onDelete={handleDeleteOperation}
-          onExport={handleExport}
-        />
-      </div>
+      <OperationTable
+        data={operations}
+        lanchas={options.lanchas}
+        operators={options.operators}
+        canDelete={session.role === "admin"}
+        searchTerm={operationFilters.searchTerm}
+        statusFilter={operationFilters.statusFilter}
+        lanchaFilter={operationFilters.lanchaFilter}
+        operatorFilter={operationFilters.operatorFilter}
+        onAdd={handleAddOperation}
+        onCloseOperation={handleCloseOperation}
+        onEdit={handleEditOperation}
+        onDelete={handleDeleteOperation}
+        onExport={handleExport}
+        onSearchTermChange={(searchTerm) =>
+          setOperationFilters((current) => ({
+            ...current,
+            searchTerm,
+          }))
+        }
+        onStatusFilterChange={(statusFilter) =>
+          setOperationFilters((current) => ({
+            ...current,
+            statusFilter,
+          }))
+        }
+        onLanchaFilterChange={(lanchaFilter) =>
+          setOperationFilters((current) => ({
+            ...current,
+            lanchaFilter,
+          }))
+        }
+        onOperatorFilterChange={(operatorFilter) =>
+          setOperationFilters((current) => ({
+            ...current,
+            operatorFilter,
+          }))
+        }
+      />
     );
   };
 

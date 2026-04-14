@@ -118,6 +118,7 @@ CREATE TABLE IF NOT EXISTS operacoes (
   id_operador INT NOT NULL,
   id_status INT NOT NULL,
   id_usuario INT,
+  nome_marinheiro VARCHAR(100),
   inicio_operacao TIMESTAMP NOT NULL DEFAULT NOW(),
   fim_operacao TIMESTAMP,
   observacao VARCHAR(255),
@@ -128,6 +129,9 @@ CREATE TABLE IF NOT EXISTS operacoes (
   FOREIGN KEY (id_usuario) REFERENCES usuarios(id_usuario),
   CHECK (fim_operacao IS NULL OR fim_operacao >= inicio_operacao)
 );
+
+ALTER TABLE operacoes
+ADD COLUMN IF NOT EXISTS nome_marinheiro VARCHAR(100);
 
 INSERT INTO status (status) VALUES
   ('Barra'),

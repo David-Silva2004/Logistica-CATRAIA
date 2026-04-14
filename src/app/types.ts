@@ -30,6 +30,7 @@ export interface OperationRecord {
   statusName: string;
   userId: number | null;
   userName: string | null;
+  crewMemberName: string | null;
   startedAt: string;
   finishedAt: string | null;
   notes: string;

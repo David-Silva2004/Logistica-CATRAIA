@@ -18,11 +18,19 @@ interface OperationTableProps {
   lanchas: SelectOption[];
   operators: SelectOption[];
   canDelete: boolean;
+  searchTerm: string;
+  statusFilter: string;
+  lanchaFilter: string;
+  operatorFilter: string;
   onAdd: () => void;
   onCloseOperation: (operation: OperationRecord) => void;
   onEdit: (operation: OperationRecord) => void;
   onDelete: (operation: OperationRecord) => void;
   onExport: () => void;
+  onSearchTermChange: (value: string) => void;
+  onStatusFilterChange: (value: string) => void;
+  onLanchaFilterChange: (value: string) => void;
+  onOperatorFilterChange: (value: string) => void;
 }
 
 type SortColumn =
@@ -125,16 +133,20 @@ export function OperationTable({
   lanchas,
   operators,
   canDelete,
+  searchTerm,
+  statusFilter,
+  lanchaFilter,
+  operatorFilter,
   onAdd,
   onCloseOperation,
   onEdit,
   onDelete,
   onExport,
+  onSearchTermChange,
+  onStatusFilterChange,
+  onLanchaFilterChange,
+  onOperatorFilterChange,
 }: OperationTableProps) {
-  const [searchTerm, setSearchTerm] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
-  const [lanchaFilter, setLanchaFilter] = useState("all");
-  const [operatorFilter, setOperatorFilter] = useState("all");
   const [sortColumn, setSortColumn] = useState<SortColumn>("startedAt");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
   const [now, setNow] = useState(() => Date.now());
@@ -287,7 +299,7 @@ export function OperationTable({
               type="text"
               placeholder="Buscar por ID, operador, lancha ou tipo..."
               value={searchTerm}
-              onChange={(event) => setSearchTerm(event.target.value)}
+              onChange={(event) => onSearchTermChange(event.target.value)}
               className="w-full rounded-xl border border-black/8 bg-slate-50 py-2 pl-10 pr-4 transition-colors focus:border-amber-300 focus:outline-none"
             />
           </div>
@@ -296,7 +308,7 @@ export function OperationTable({
             <Filter size={18} className="text-amber-700" />
             <select
               value={statusFilter}
-              onChange={(event) => setStatusFilter(event.target.value)}
+              onChange={(event) => onStatusFilterChange(event.target.value)}
               className="cursor-pointer bg-transparent text-sm font-medium outline-none"
             >
               <option value="all">Todos status</option>
@@ -312,7 +324,7 @@ export function OperationTable({
             <ShipWheel size={18} className="text-amber-700" />
             <select
               value={lanchaFilter}
-              onChange={(event) => setLanchaFilter(event.target.value)}
+              onChange={(event) => onLanchaFilterChange(event.target.value)}
               className="cursor-pointer bg-transparent text-sm font-medium outline-none"
             >
               <option value="all">Todas lanchas</option>
@@ -328,7 +340,7 @@ export function OperationTable({
             <UserRound size={18} className="text-amber-700" />
             <select
               value={operatorFilter}
-              onChange={(event) => setOperatorFilter(event.target.value)}
+              onChange={(event) => onOperatorFilterChange(event.target.value)}
               className="cursor-pointer bg-transparent text-sm font-medium outline-none"
             >
               <option value="all">Todos operadores</option>
@@ -372,7 +384,7 @@ export function OperationTable({
                 Tipo
               </th>
               <th className="border-b border-black/5 px-4 py-4 text-left text-xs font-bold uppercase tracking-wider text-slate-700">
-                Usuario
+                Marinheiro
               </th>
               <th className="border-b border-black/5 px-4 py-4 text-left text-xs font-bold uppercase tracking-wider text-slate-700">
                 Observacao
@@ -443,7 +455,7 @@ export function OperationTable({
                     {operation.typeName}
                   </td>
                   <td className="px-4 py-4 text-sm text-slate-600">
-                    {operation.userName || "-"}
+                    {operation.crewMemberName || "-"}
                   </td>
                   <td className="max-w-xs truncate px-4 py-4 text-sm text-slate-600">
                     {operation.notes || "-"}

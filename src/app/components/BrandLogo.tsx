@@ -54,7 +54,7 @@ export function BrandLogo({
             titleClassName,
           )}
         >
-          Fabiana
+         Fabiana
         </p>
         {subtitle ? (
           <p

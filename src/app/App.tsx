@@ -1,15 +1,11 @@
 import { useEffect, useState } from "react";
 import { DashboardCards } from "./components/DashboardCards";
-import { DailyOperationsReport } from "./components/DailyOperationsReport";
 import { DesktopWindowBar } from "./components/DesktopWindowBar";
 import { EmptyState } from "./components/EmptyState";
 import { ErrorState } from "./components/ErrorState";
-import { LanchaUsageReport } from "./components/LanchaUsageReport";
 import { LoadingState } from "./components/LoadingState";
 import { LoginScreen } from "./components/LoginScreen";
-import { OpenOperationsReport } from "./components/OpenOperationsReport";
-import { OperatorProductivityReport } from "./components/OperatorProductivityReport";
-import { PeriodConsolidatedReport } from "./components/PeriodConsolidatedReport";
+import { ReportsWorkspace } from "./components/ReportsWorkspace";
 import {
   OperationModal,
   type OperationModalMode,
@@ -465,32 +461,12 @@ export default function App() {
 
     if (activeView === "reports") {
       return (
-        <div className="space-y-6">
-          <PeriodConsolidatedReport
-            selectedDate={selectedDate}
-            session={session}
-          />
-          <DailyOperationsReport
-            data={operations}
-            selectedDate={selectedDate}
-            lanchas={options.lanchas}
-            operators={options.operators}
-          />
-          <OpenOperationsReport
-            data={operations}
-            selectedDate={selectedDate}
-            lanchas={options.lanchas}
-            operators={options.operators}
-          />
-          <OperatorProductivityReport
-            data={operations}
-            selectedDate={selectedDate}
-          />
-          <LanchaUsageReport
-            data={operations}
-            selectedDate={selectedDate}
-          />
-        </div>
+        <ReportsWorkspace
+          data={operations}
+          selectedDate={selectedDate}
+          lanchas={options.lanchas}
+          operators={options.operators}
+        />
       );
     }
 

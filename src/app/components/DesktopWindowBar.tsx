@@ -86,10 +86,9 @@ export function DesktopWindowBar() {
       className="relative flex h-14 items-center justify-between border-b border-[#d8edf8] bg-[linear-gradient(180deg,rgba(255,255,255,0.97),rgba(243,250,254,0.92))] px-4 shadow-[0_10px_30px_rgba(6,67,104,0.06)] backdrop-blur-xl select-none"
     >
       <BrandLogo
-        variant="name"
-        subtitle=""
+        variant="icon"
         className="min-w-0"
-        titleClassName="text-base"
+        imageClassName="h-9 w-9 rounded-xl"
       />
 
       <div

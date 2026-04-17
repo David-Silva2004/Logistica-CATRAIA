@@ -31,6 +31,7 @@ export default defineConfig({
     },
   },
   server: {
+    allowedHosts: ['blade-amicably-dreamland.ngrok-free.dev'],
     proxy: {
       '/api': {
         target: 'http://localhost:3001',
